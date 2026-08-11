@@ -17,7 +17,8 @@ Figma 探索阶段曾选择 “B · Physical Ledge 为主、A · Native Precisio
 - 颜色使用系统语义色：强调色、分隔色、控件背景色和错误色；不维护独立品牌配色主题。
 - 字体使用 SF 系统字阶，不导入产品字体。
 - 文件图标来自 `NSWorkspace`，保留系统熟悉度与文件类型覆盖。
-- 菜单栏图标使用已确认的 A · Ledge Tabs 单色 Template Icon。
+- 菜单栏图标、App icon 和 Logo 使用同一套“一张卡片刚刚落在搁板上”的 A2 视觉骨架。
+- 菜单栏保持单色 Template Icon；App icon 使用矿物青、乳白、石墨与接触点琥珀色；Logo 以中文“搁这儿”为主标。
 - 面板打开时，菜单栏图标显示系统原生的半透明选中反馈。
 - 宽面板不与菜单栏图标强制居中：优先靠近面板左上，右侧空间不足时靠近右上。
 - 面板与菜单栏留出可见但克制的间距；当前计算间距为 12 pt，用来抵消窗口阴影造成的视觉贴合。
@@ -43,7 +44,7 @@ Figma 探索阶段曾选择 “B · Physical Ledge 为主、A · Native Precisio
 Figma 文件保留探索过程、状态覆盖、组件思路和菜单栏图标资产，作为设计历史与后续讨论入口，不再作为像素级生产真相。
 
 - 保留：Brief、References、Directions、Recommended、States、Components & Assets。
-- 继续使用：A · Ledge Tabs 的单色 SVG。
+- 继续使用：A2 单卡片落在搁板上的单色 SVG，以及 `docs/brand/` 中的同源品牌资产。
 - 不直接实现：暖白 surface、黄色 ledge、定制文件类型图标、双列 Dense 20 版式。
 - 系统功能图标继续使用 SF Symbols，不导出品牌资产。
 - Figma 文件未发布为 Library，`File Reference Item` 也未建立远程 Code Connect。

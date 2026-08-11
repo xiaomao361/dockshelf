@@ -1,7 +1,7 @@
 <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g id="Template Icon / A Ledge Tabs">
-<g id="Files on Ledge artwork">
-<path id="Vector" d="M9 18H3V29H12V21L9 18ZM9 18V22H12M19 8H13V29H22V11L19 8ZM19 8V12H22M29 19H24V29H32V22L29 19ZM29 19V23H32M2 32H34" stroke="black" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-</g>
-</g>
+  <g transform="rotate(-7 18 16)">
+    <path d="M11 5H22.5L27 9.5V24C27 25.7 25.7 27 24 27H11C9.3 27 8 25.7 8 24V8C8 6.3 9.3 5 11 5Z" stroke="black" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M22.5 5V9.5H27" stroke="black" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M3 30H33" stroke="black" stroke-width="3.2" stroke-linecap="round"/>
 </svg>

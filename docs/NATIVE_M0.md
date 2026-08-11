@@ -12,6 +12,7 @@
 
 - `LSUIElement=true`，没有 Dock 图标和普通主窗口；
 - `NSStatusItem` 菜单栏入口与自绘 Template Icon；
+- Asset Catalog 提供完整 macOS AppIcon，品牌矢量源文件位于 `docs/brand/`；
 - 点击显示或收起临时 `NSPanel`；
 - 有内容时悬停菜单栏图标 300 ms 自动展开；
 - 面板关闭时把文件或文件夹拖到菜单栏图标会立即展开接收界面，并保持 Finder 拖拽会话；
@@ -47,6 +48,8 @@
 - 构建产物 `Info.plist` 中 `LSUIElement=true`；
 - 菜单栏状态项、临时面板和原生玻璃材质完成真实渲染；
 - 用户确认核心流程、交互和最终视觉效果可用。
+- 隔离的 `ShelfStore` 冒烟测试覆盖容量、固定、替换、撤销、恢复、拒绝分支和文件夹；
+- Asset Catalog 编译确认 AppIcon 全尺寸进入构建产物，真实菜单栏 18 pt 图标完成视觉检查。
 
 ## 仍需正式验收
 
