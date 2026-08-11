@@ -8,7 +8,19 @@
 
 当前最远验证层是：**Debug/Release 构建、隔离模型冒烟测试、资源编译、真实进程启动、真实菜单栏 18 pt 视觉检查，以及用户对核心交互的人工体验**。
 
-这不等于正式发布完成。尚未进行 Developer ID 签名、公证、安装包、自动更新或对外发布。
+v0.1.0 已完成 Developer ID 签名、App 与 DMG 双层公证、stapling、Gatekeeper 验证、GitHub Release 发布和公开下载复验。自动更新与 Mac App Store 仍不在本版本范围内。
+
+## v0.1.0 发布回执
+
+```text
+Release：https://github.com/xiaomao361/dockshelf/releases/tag/v0.1.0
+Tag commit：510398f1e6e3d74e69f39e1da0fe90e489bbd552
+产物：DockShelf-0.1.0-macos-arm64.dmg
+SHA-256：b9d46788370780382319141930aa9cd3f1e55a2a79bc496fbdfe8e6f3ab13c08
+App 公证：ba1bdc9b-be33-4639-859b-17f9abb5a3e0（Accepted）
+DMG 公证：eefccd7a-3531-4e86-abac-5b61b54f90a6（Accepted）
+范围：Apple Silicon arm64，macOS 14+
+```
 
 ## 权威位置
 
@@ -119,16 +131,17 @@ open -n '.build/DerivedData/Build/Products/Debug/搁这儿.app'
 - 用户固定的是路径引用；原文件被移动或删除后会显示失效，不自动追踪新位置；
 - 只持久化固定项，普通项退出即清空是产品决策，不是数据丢失 Bug；
 - Logo 当前使用系统苹方字标；若未来用于跨平台官网、商店宣传或印刷，再决定是否轮廓化或定制字形；
-- 尚未对浏览器、全部聊天/邮件应用、特殊路径、多显示器和辅助功能组合做正式逐项发布验收；
-- 尚未签名、公证或验证 Gatekeeper，构建成功不能推导为可分发版本。
+- 尚未对全部浏览器、聊天/邮件应用、特殊路径、多显示器和辅助功能组合做正式逐项矩阵验收；
+- v0.1.0 没有自动更新、开机启动、Intel Mac 或 Mac App Store 版本；
+- 当前公开下载验证证明产物完整、签名、公证与 Gatekeeper 通过，不代表长期用户使用验收。
 
 ## 下一步建议
 
-若继续自用发布，下一阶段只做一个小闭环：确定版本号与安装位置，使用 Developer ID 签名、公证，然后在隔离目录验证安装、首次启动、重启恢复和 Gatekeeper。不要同时扩展新产品功能。
+先观察 v0.1.0 的真实使用反馈。只有出现稳定需求时，再单独评估开机启动、自动更新或 Mac App Store 沙盒版本；不要同时扩展新产品功能。
 
 ## 不要做
 
 - 不恢复 Flutter 或优先考虑 Windows；
 - 不扩成剪贴板历史、文件管理器、搜索分类或云同步；
 - 不删除 Flutter 归档、Figma 文件或品牌源资产；
-- 不把本阶段构建与人工体验表述成已签名、已发布或已通过完整业务验收。
+- 不把已签名、已公证和已发布表述成已通过长期用户验收或 Mac App Store 审核。
