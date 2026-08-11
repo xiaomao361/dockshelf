@@ -376,7 +376,6 @@ private struct HorizontalScrollWheelBridge: NSViewRepresentable {
     final class Coordinator {
         weak var hostView: NSView?
         private var localEventMonitor: Any?
-        private var globalEventMonitor: Any?
 
         func install(for view: NSView) {
             hostView = view
@@ -385,19 +384,13 @@ private struct HorizontalScrollWheelBridge: NSViewRepresentable {
                 guard let self else { return event }
                 return self.route(event) ? nil : event
             }
-
-            globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) {
-                [weak self] event in
-                DispatchQueue.main.async {
-                    _ = self?.route(event)
-                }
-            }
         }
 
         @discardableResult
         private func route(_ event: NSEvent) -> Bool {
             guard let hostView,
-                  let window = hostView.window else { return false }
+                  let window = hostView.window,
+                  window.isVisible else { return false }
 
             let locationInWindow = event.window === window
                 ? event.locationInWindow
@@ -481,10 +474,6 @@ private struct HorizontalScrollWheelBridge: NSViewRepresentable {
             if let localEventMonitor {
                 NSEvent.removeMonitor(localEventMonitor)
                 self.localEventMonitor = nil
-            }
-            if let globalEventMonitor {
-                NSEvent.removeMonitor(globalEventMonitor)
-                self.globalEventMonitor = nil
             }
         }
 

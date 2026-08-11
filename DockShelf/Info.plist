@@ -12,6 +12,8 @@
     <string>6.0</string>
     <key>CFBundleName</key>
     <string>搁这儿</string>
+    <key>CFBundleDisplayName</key>
+    <string>搁这儿</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -24,6 +26,8 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Zhou Wei. All rights reserved.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>
