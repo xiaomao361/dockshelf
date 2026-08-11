@@ -46,8 +46,16 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         interaction.panelDropChanged = { [weak self] isActive in
             self?.panelDropChanged(isActive)
         }
-        interaction.dropFinished = { [weak self] addedItems in
-            self?.finishDrop(addedItems: addedItems)
+        interaction.dropFinished = { [weak self] result in
+            self?.finishDrop(result: result)
+        }
+        interaction.replacementUndone = { [weak self] in
+            self?.schedule(after: 1.2) { [weak self] in
+                self?.close()
+            }
+        }
+        interaction.feedbackDismissed = { [weak self] in
+            self?.returnToShelf()
         }
         interaction.exportBegan = { [weak self] in
             self?.beginExport()
@@ -69,11 +77,16 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     func toggleManual(relativeTo button: NSStatusBarButton) {
-        if panel.isVisible && presentationReason == .manual {
-            close()
-        } else {
-            show(relativeTo: button, reason: .manual, activate: true)
+        if panel.isVisible {
+            if presentationReason == .hover {
+                show(relativeTo: button, reason: .manual, activate: true)
+            } else {
+                close()
+            }
+            return
         }
+
+        show(relativeTo: button, reason: .manual, activate: true)
     }
 
     func showManual(relativeTo button: NSStatusBarButton) {
@@ -119,9 +132,9 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     @discardableResult
     func receiveStatusDrop(_ urls: [URL]) -> Bool {
         isStatusDragActive = false
-        let addedCount = store.add(urls)
-        interaction.finishDrop(addedItems: addedCount > 0)
-        return addedCount > 0
+        let result = store.add(urls)
+        interaction.finishDrop(result: result)
+        return result.accepted
     }
 
     func close() {
@@ -140,8 +153,8 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     ) {
         cancelPendingWork()
         removeEventMonitors()
-        if anchorButton !== button {
-            anchorButton?.isHighlighted = false
+        if anchorButton !== button, let previousButton = anchorButton {
+            applyAnchorHighlight(false, to: previousButton)
         }
         anchorButton = button
         presentationReason = reason
@@ -218,12 +231,28 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func finishDrop(addedItems: Bool) {
+    private func finishDrop(result: ShelfStore.AddResult) {
         isStatusDragActive = false
         isPanelDragActive = false
         presentationReason = .drop
-        schedule(after: addedItems ? 0.45 : 0.8) { [weak self] in
-            self?.close()
+        cancelPendingWork()
+
+        let closeDelay: TimeInterval?
+        switch result {
+        case .added:
+            closeDelay = 0.45
+        case .replaced:
+            closeDelay = nil
+            installOutsideClickMonitors()
+        case .duplicate, .invalid, .tooMany, .insufficientReplaceable:
+            closeDelay = nil
+            installOutsideClickMonitors()
+        }
+
+        if let closeDelay {
+            schedule(after: closeDelay) { [weak self] in
+                self?.close()
+            }
         }
     }
 
@@ -236,6 +265,13 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         schedule(after: 15) { [weak self] in
             self?.finishExport()
         }
+    }
+
+    private func returnToShelf() {
+        cancelPendingWork()
+        removeEventMonitors()
+        presentationReason = .manual
+        installOutsideClickMonitors()
     }
 
     private func finishExport() {
@@ -361,8 +397,24 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     private func setAnchorHighlighted(_ highlighted: Bool) {
-        anchorButton?.isHighlighted = highlighted
-        anchorButton?.needsDisplay = true
+        guard let button = anchorButton else { return }
+        applyAnchorHighlight(highlighted, to: button)
+
+        guard highlighted else { return }
+        DispatchQueue.main.async { [weak self, weak button] in
+            guard let self,
+                  let button,
+                  self.anchorButton === button,
+                  self.panel.isVisible else { return }
+            self.applyAnchorHighlight(true, to: button)
+        }
+    }
+
+    private func applyAnchorHighlight(_ highlighted: Bool, to button: NSStatusBarButton) {
+        button.highlight(highlighted)
+        button.isHighlighted = highlighted
+        button.cell?.isHighlighted = highlighted
+        button.needsDisplay = true
     }
 
     private func origin(relativeTo button: NSStatusBarButton) -> NSPoint {

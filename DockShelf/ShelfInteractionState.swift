@@ -6,7 +6,14 @@ final class ShelfInteractionState: ObservableObject {
         case idle
         case receivingValid
         case receivingInvalid
+        case returningShelfItem
         case success
+        case invalid
+        case replaced(count: Int)
+        case duplicate
+        case tooMany(limit: Int)
+        case insufficientReplaceable(required: Int, available: Int)
+        case restored
         case exporting
     }
 
@@ -14,7 +21,9 @@ final class ShelfInteractionState: ObservableObject {
 
     var panelHoverChanged: ((Bool) -> Void)?
     var panelDropChanged: ((Bool) -> Void)?
-    var dropFinished: ((Bool) -> Void)?
+    var dropFinished: ((ShelfStore.AddResult) -> Void)?
+    var replacementUndone: (() -> Void)?
+    var feedbackDismissed: (() -> Void)?
     var exportBegan: (() -> Void)?
 
     func showDropTarget(isValid: Bool) {
@@ -28,14 +37,45 @@ final class ShelfInteractionState: ObservableObject {
 
     func panelDropExited() {
         panelDropChanged?(false)
-        if phase != .success && phase != .exporting {
+        if !phase.isFeedback && phase != .exporting {
             phase = .idle
         }
     }
 
-    func finishDrop(addedItems: Bool) {
-        phase = addedItems ? .success : .receivingInvalid
-        dropFinished?(addedItems)
+    func finishDrop(result: ShelfStore.AddResult) {
+        switch result {
+        case .added:
+            phase = .success
+        case let .replaced(_, removedCount):
+            phase = .replaced(count: removedCount)
+        case .duplicate:
+            phase = .duplicate
+        case .invalid:
+            phase = .invalid
+        case let .tooMany(limit):
+            phase = .tooMany(limit: limit)
+        case let .insufficientReplaceable(required, available):
+            phase = .insufficientReplaceable(required: required, available: available)
+        }
+        dropFinished?(result)
+    }
+
+    func showReplacementRestored() {
+        phase = .restored
+        replacementUndone?()
+    }
+
+    func dismissFeedback() {
+        phase = .idle
+        feedbackDismissed?()
+    }
+
+    func showReturningShelfItem() {
+        phase = .returningShelfItem
+    }
+
+    func resumeExport() {
+        phase = .exporting
     }
 
     func beginExport() {
@@ -45,5 +85,16 @@ final class ShelfInteractionState: ObservableObject {
 
     func reset() {
         phase = .idle
+    }
+}
+
+private extension ShelfInteractionState.Phase {
+    var isFeedback: Bool {
+        switch self {
+        case .success, .invalid, .replaced, .duplicate, .tooMany, .insufficientReplaceable, .restored:
+            true
+        case .idle, .receivingValid, .receivingInvalid, .returningShelfItem, .exporting:
+            false
+        }
     }
 }

@@ -2,6 +2,8 @@ import AppKit
 
 @MainActor
 final class StatusBarController: NSObject {
+    private static let statusItemHitWidth: CGFloat = 32
+
     private let statusItem: NSStatusItem
     private let store = ShelfStore()
     private let panelController: ShelfPanelController
@@ -9,7 +11,7 @@ final class StatusBarController: NSObject {
     private var interactionView: StatusItemInteractionView?
 
     override init() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: Self.statusItemHitWidth)
         panelController = ShelfPanelController(store: store)
         super.init()
 
@@ -50,8 +52,12 @@ final class StatusBarController: NSObject {
         panelController.showManual(relativeTo: button)
     }
 
-    @objc private func clearShelf() {
-        store.clear()
+    @objc private func clearTemporaryShelf() {
+        store.clearTemporaryItems()
+    }
+
+    @objc private func clearAllShelf() {
+        store.clearAll()
     }
 
     @objc private func quit() {
@@ -65,9 +71,21 @@ final class StatusBarController: NSObject {
         showItem.target = self
         menu.addItem(showItem)
 
-        let clearItem = NSMenuItem(title: "清空引用", action: #selector(clearShelf), keyEquivalent: "")
-        clearItem.target = self
-        menu.addItem(clearItem)
+        let clearTemporaryItem = NSMenuItem(
+            title: "清空临时文件",
+            action: #selector(clearTemporaryShelf),
+            keyEquivalent: ""
+        )
+        clearTemporaryItem.target = self
+        menu.addItem(clearTemporaryItem)
+
+        let clearAllItem = NSMenuItem(
+            title: "清空全部引用",
+            action: #selector(clearAllShelf),
+            keyEquivalent: ""
+        )
+        clearAllItem.target = self
+        menu.addItem(clearAllItem)
 
         menu.addItem(.separator())
 
@@ -78,14 +96,18 @@ final class StatusBarController: NSObject {
     }
 
     private func showContextMenu(relativeTo button: NSStatusBarButton) {
+        button.highlight(true)
         button.isHighlighted = true
+        button.cell?.isHighlighted = true
         button.needsDisplay = true
         contextMenu.popUp(
             positioning: nil,
             at: NSPoint(x: 0, y: button.bounds.height + 4),
             in: button
         )
+        button.highlight(false)
         button.isHighlighted = false
+        button.cell?.isHighlighted = false
         button.needsDisplay = true
     }
 
@@ -120,12 +142,12 @@ extension StatusBarController: StatusItemInteractionViewDelegate {
         panelController.statusHoverChanged(isHovering, relativeTo: button)
     }
 
-    func statusItemInteractionView(_ view: StatusItemInteractionView, dragEnteredWithValidFiles isValid: Bool) {
+    func statusItemInteractionView(_ view: StatusItemInteractionView, dragEnteredWithValidItems isValid: Bool) {
         guard let button = statusItem.button else { return }
         panelController.statusDragEntered(relativeTo: button, isValid: isValid)
     }
 
-    func statusItemInteractionView(_ view: StatusItemInteractionView, dragUpdatedWithValidFiles isValid: Bool) {
+    func statusItemInteractionView(_ view: StatusItemInteractionView, dragUpdatedWithValidItems isValid: Bool) {
         panelController.statusDragUpdated(isValid: isValid)
     }
 
@@ -143,8 +165,8 @@ protocol StatusItemInteractionViewDelegate: AnyObject {
     func statusItemInteractionViewDidLeftClick(_ view: StatusItemInteractionView)
     func statusItemInteractionViewDidRightClick(_ view: StatusItemInteractionView)
     func statusItemInteractionView(_ view: StatusItemInteractionView, hoverChanged isHovering: Bool)
-    func statusItemInteractionView(_ view: StatusItemInteractionView, dragEnteredWithValidFiles isValid: Bool)
-    func statusItemInteractionView(_ view: StatusItemInteractionView, dragUpdatedWithValidFiles isValid: Bool)
+    func statusItemInteractionView(_ view: StatusItemInteractionView, dragEnteredWithValidItems isValid: Bool)
+    func statusItemInteractionView(_ view: StatusItemInteractionView, dragUpdatedWithValidItems isValid: Bool)
     func statusItemInteractionViewDragExited(_ view: StatusItemInteractionView)
     func statusItemInteractionView(_ view: StatusItemInteractionView, received urls: [URL]) -> Bool
 }
@@ -187,14 +209,14 @@ final class StatusItemInteractionView: NSView {
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        let isValid = !validFileURLs(from: sender.draggingPasteboard).isEmpty
-        delegate?.statusItemInteractionView(self, dragEnteredWithValidFiles: isValid)
+        let isValid = !validItemURLs(from: sender.draggingPasteboard).isEmpty
+        delegate?.statusItemInteractionView(self, dragEnteredWithValidItems: isValid)
         return isValid ? .copy : []
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        let isValid = !validFileURLs(from: sender.draggingPasteboard).isEmpty
-        delegate?.statusItemInteractionView(self, dragUpdatedWithValidFiles: isValid)
+        let isValid = !validItemURLs(from: sender.draggingPasteboard).isEmpty
+        delegate?.statusItemInteractionView(self, dragUpdatedWithValidItems: isValid)
         return isValid ? .copy : []
     }
 
@@ -203,12 +225,12 @@ final class StatusItemInteractionView: NSView {
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        let urls = validFileURLs(from: sender.draggingPasteboard)
+        let urls = validItemURLs(from: sender.draggingPasteboard)
         guard !urls.isEmpty else { return false }
         return delegate?.statusItemInteractionView(self, received: urls) ?? false
     }
 
-    private func validFileURLs(from pasteboard: NSPasteboard) -> [URL] {
+    private func validItemURLs(from pasteboard: NSPasteboard) -> [URL] {
         let values = pasteboard.readObjects(
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
@@ -216,9 +238,7 @@ final class StatusItemInteractionView: NSView {
 
         return values.compactMap { value in
             let url = value as URL
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-                  !isDirectory.boolValue else { return nil }
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
             return url
         }
     }

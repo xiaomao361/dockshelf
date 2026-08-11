@@ -5,6 +5,7 @@ enum DockShelfTheme {
     static let itemBackground = Color(nsColor: .controlBackgroundColor)
     static let border = Color(nsColor: .separatorColor)
     static let invalid = Color(nsColor: .systemRed)
+    static let warning = Color(nsColor: .systemOrange)
 }
 
 enum DockShelfMetrics {
