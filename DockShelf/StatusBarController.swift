@@ -7,7 +7,12 @@ final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let store = ShelfStore()
     private let panelController: ShelfPanelController
-    private lazy var contextMenu = makeContextMenu()
+    private var shortcut: ShelfShortcut?
+    private var dragMonitor: ShelfDragMonitor?
+    private static let automaticDragKey = "DockShelf.automaticFileDrag"
+    private var automaticDragEnabled: Bool {
+        UserDefaults.standard.object(forKey: Self.automaticDragKey) as? Bool ?? true
+    }
     private var interactionView: StatusItemInteractionView?
 
     override init() {
@@ -30,6 +35,16 @@ final class StatusBarController: NSObject {
         interactionView.setAccessibilityElement(false)
         button.addSubview(interactionView)
         self.interactionView = interactionView
+        dragMonitor = ShelfDragMonitor(onStart: { [weak self] in
+            guard let self, let button = self.statusItem.button else { return }
+            self.panelController.showForAutomaticDrag(relativeTo: button)
+        }, onEnd: { [weak self] in self?.panelController.automaticDragEnded() })
+        if automaticDragEnabled { dragMonitor?.start() }
+        shortcut = ShelfShortcut { [weak self] in self?.showShelfUsingShortcut() }
+        updateStatusTooltip()
+        if shortcut?.isRegistered != true {
+            NSLog("Shelf shortcut registration failed: %d", shortcut?.registrationStatus ?? -1)
+        }
 
 #if DEBUG
         NSLog("DockShelf status item initialized; showShelf=%@", CommandLine.arguments.contains("--show-shelf") ? "true" : "false")
@@ -52,11 +67,43 @@ final class StatusBarController: NSObject {
         panelController.showManual(relativeTo: button)
     }
 
+    @objc private func showShelfUsingShortcut() {
+        guard let button = statusItem.button else { return }
+        panelController.showUsingShortcut(relativeTo: button)
+    }
+
+    @objc private func toggleAutomaticDrag() {
+        let enable = dragMonitor?.isMonitoring != true
+        UserDefaults.standard.set(enable, forKey: Self.automaticDragKey)
+        if enable { dragMonitor?.start() } else { dragMonitor?.stop() }
+        updateStatusTooltip()
+    }
+
+    private func updateStatusTooltip() {
+        if dragMonitor?.isMonitoring == true {
+            statusItem.button?.toolTip = "搁这儿 · 拖动文件时自动展开"
+        } else if automaticDragEnabled {
+            statusItem.button?.toolTip = "搁这儿 · 自动展开不可用，可点击打开"
+        } else {
+            statusItem.button?.toolTip = "搁这儿 · 点击打开"
+        }
+    }
+
     @objc private func clearTemporaryShelf() {
         store.clearTemporaryItems()
     }
 
     @objc private func clearAllShelf() {
+        guard !store.items.isEmpty else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "移除全部引用？"
+        alert.informativeText = "固定和临时引用都会从搁板移除，但不会删除原文件。"
+        alert.addButton(withTitle: "移除全部引用")
+        alert.addButton(withTitle: "取消")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
         store.clearAll()
     }
 
@@ -66,25 +113,42 @@ final class StatusBarController: NSObject {
 
     private func makeContextMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
 
         let showItem = NSMenuItem(title: "显示搁板", action: #selector(showShelf), keyEquivalent: "")
         showItem.target = self
         menu.addItem(showItem)
+        let nearItem = NSMenuItem(
+            title: shortcut?.isRegistered == true ? "显示搁板（⌃⌥空格）" : "显示搁板（快捷键不可用）",
+            action: #selector(showShelfUsingShortcut), keyEquivalent: ""
+        )
+        nearItem.target = self
+        menu.addItem(nearItem)
+        let automaticItem = NSMenuItem(
+            title: automaticDragEnabled && dragMonitor?.isMonitoring != true ? "自动展开不可用（点击重试）" : "拖动文件时自动展开",
+            action: #selector(toggleAutomaticDrag), keyEquivalent: ""
+        )
+        automaticItem.target = self
+        automaticItem.state = dragMonitor?.isMonitoring == true ? .on : .off
+        menu.addItem(automaticItem)
+
 
         let clearTemporaryItem = NSMenuItem(
-            title: "清空临时文件",
+            title: "移除全部临时引用",
             action: #selector(clearTemporaryShelf),
             keyEquivalent: ""
         )
         clearTemporaryItem.target = self
+        clearTemporaryItem.isEnabled = store.items.contains { !$0.isPinned }
         menu.addItem(clearTemporaryItem)
 
         let clearAllItem = NSMenuItem(
-            title: "清空全部引用",
+            title: "移除全部引用…",
             action: #selector(clearAllShelf),
             keyEquivalent: ""
         )
         clearAllItem.target = self
+        clearAllItem.isEnabled = !store.items.isEmpty
         menu.addItem(clearAllItem)
 
         menu.addItem(.separator())
@@ -96,6 +160,7 @@ final class StatusBarController: NSObject {
     }
 
     private func showContextMenu(relativeTo button: NSStatusBarButton) {
+        let contextMenu = makeContextMenu()
         button.highlight(true)
         button.isHighlighted = true
         button.cell?.isHighlighted = true
@@ -155,8 +220,8 @@ extension StatusBarController: StatusItemInteractionViewDelegate {
         panelController.statusDragExited()
     }
 
-    func statusItemInteractionView(_ view: StatusItemInteractionView, received urls: [URL]) -> Bool {
-        return panelController.receiveStatusDrop(urls)
+    func statusItemInteractionView(_ view: StatusItemInteractionView, received batch: ShelfImport.Batch) -> Bool {
+        return panelController.receiveStatusDrop(batch)
     }
 }
 
@@ -168,7 +233,7 @@ protocol StatusItemInteractionViewDelegate: AnyObject {
     func statusItemInteractionView(_ view: StatusItemInteractionView, dragEnteredWithValidItems isValid: Bool)
     func statusItemInteractionView(_ view: StatusItemInteractionView, dragUpdatedWithValidItems isValid: Bool)
     func statusItemInteractionViewDragExited(_ view: StatusItemInteractionView)
-    func statusItemInteractionView(_ view: StatusItemInteractionView, received urls: [URL]) -> Bool
+    func statusItemInteractionView(_ view: StatusItemInteractionView, received batch: ShelfImport.Batch) -> Bool
 }
 
 @MainActor
@@ -209,13 +274,13 @@ final class StatusItemInteractionView: NSView {
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        let isValid = !validItemURLs(from: sender.draggingPasteboard).isEmpty
+        let isValid = ShelfImport.accepts(sender.draggingPasteboard)
         delegate?.statusItemInteractionView(self, dragEnteredWithValidItems: isValid)
         return isValid ? .copy : []
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        let isValid = !validItemURLs(from: sender.draggingPasteboard).isEmpty
+        let isValid = ShelfImport.accepts(sender.draggingPasteboard)
         delegate?.statusItemInteractionView(self, dragUpdatedWithValidItems: isValid)
         return isValid ? .copy : []
     }
@@ -225,21 +290,9 @@ final class StatusItemInteractionView: NSView {
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        let urls = validItemURLs(from: sender.draggingPasteboard)
-        guard !urls.isEmpty else { return false }
-        return delegate?.statusItemInteractionView(self, received: urls) ?? false
+        guard ShelfImport.accepts(sender.draggingPasteboard) else { return false }
+        let batch = ShelfImport.read(sender.draggingPasteboard)
+        return delegate?.statusItemInteractionView(self, received: batch) ?? false
     }
 
-    private func validItemURLs(from pasteboard: NSPasteboard) -> [URL] {
-        let values = pasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]
-        ) as? [NSURL] ?? []
-
-        return values.compactMap { value in
-            let url = value as URL
-            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-            return url
-        }
-    }
 }

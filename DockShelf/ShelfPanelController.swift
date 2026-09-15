@@ -6,6 +6,7 @@ import SwiftUI
 final class ShelfPanelController: NSObject, NSWindowDelegate {
     private enum PresentationReason {
         case manual
+        case automatic
         case hover
         case drop
         case export
@@ -25,10 +26,11 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     private var isPanelHovered = false
     private var isStatusDragActive = false
     private var isPanelDragActive = false
-    private var pendingWork: DispatchWorkItem?
+    private let timers = ShelfPanelTimers()
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
     private var animationGeneration = 0
+    private var automaticSession: UUID?
 
     init(store: ShelfStore) {
         self.store = store
@@ -50,7 +52,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
             self?.finishDrop(result: result)
         }
         interaction.replacementUndone = { [weak self] in
-            self?.schedule(after: 1.2) { [weak self] in
+            self?.timers.scheduleCompletion(after: 0.5) { [weak self] in
                 self?.close()
             }
         }
@@ -71,9 +73,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
         panel.isMovable = false
-        panel.contentView = NSHostingView(
-            rootView: ShelfView(store: store, interaction: interaction)
-        )
+        panel.contentView = ShelfHostingView(store: store, interaction: interaction)
     }
 
     func toggleManual(relativeTo button: NSStatusBarButton) {
@@ -91,6 +91,31 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
 
     func showManual(relativeTo button: NSStatusBarButton) {
         show(relativeTo: button, reason: .manual, activate: true)
+    }
+
+    func showUsingShortcut(relativeTo button: NSStatusBarButton) {
+        if panel.isVisible {
+            close()
+            return
+        }
+        let isDragging = NSEvent.pressedMouseButtons & 1 != 0
+        show(relativeTo: button, reason: .manual, activate: !isDragging)
+        if isDragging { installOutsideClickMonitors() }
+    }
+
+    func showForAutomaticDrag(relativeTo button: NSStatusBarButton) {
+        guard !panel.isVisible else { return }
+        automaticSession = UUID()
+        show(relativeTo: button, reason: .automatic, activate: false)
+    }
+
+    func automaticDragEnded() {
+        guard let session = automaticSession else { return }
+        // Native performDragOperation may arrive after the mouse-up observation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.automaticSession == session else { return }
+            self.close()
+        }
     }
 
     func statusHoverChanged(_ isHovering: Bool, relativeTo button: NSStatusBarButton) {
@@ -130,18 +155,21 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     @discardableResult
-    func receiveStatusDrop(_ urls: [URL]) -> Bool {
+    func receiveStatusDrop(_ batch: ShelfImport.Batch) -> Bool {
         isStatusDragActive = false
-        let result = store.add(urls)
+        let result = store.add(batch.urls, failedCount: batch.failedCount)
         interaction.finishDrop(result: result)
         return result.accepted
     }
 
     func close() {
+        timers.cancelCompletion()
+        automaticSession = nil
         cancelPendingWork()
         removeEventMonitors()
         isStatusDragActive = false
         isPanelDragActive = false
+        interaction.isPanelVisible = false
         interaction.reset()
         animateOut()
     }
@@ -151,6 +179,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         reason: PresentationReason,
         activate: Bool
     ) {
+        timers.cancelCompletion()
         cancelPendingWork()
         removeEventMonitors()
         if anchorButton !== button, let previousButton = anchorButton {
@@ -158,6 +187,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         }
         anchorButton = button
         presentationReason = reason
+        interaction.isPanelVisible = true
         animationGeneration += 1
         panel.animations.removeAll()
 
@@ -224,14 +254,17 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     private func panelDropChanged(_ isActive: Bool) {
         isPanelDragActive = isActive
         if isActive {
+            timers.cancelCompletion()
             cancelPendingWork()
-            presentationReason = .drop
-        } else if !isStatusDragActive {
+            if automaticSession == nil { presentationReason = .drop }
+        } else if automaticSession == nil && !isStatusDragActive {
             scheduleTransientClose(after: 0.45)
         }
     }
 
     private func finishDrop(result: ShelfStore.AddResult) {
+        timers.cancelCompletion()
+        automaticSession = nil
         isStatusDragActive = false
         isPanelDragActive = false
         presentationReason = .drop
@@ -240,23 +273,25 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         let closeDelay: TimeInterval?
         switch result {
         case .added:
-            closeDelay = 0.45
+            closeDelay = 0.35
         case .replaced:
             closeDelay = nil
             installOutsideClickMonitors()
-        case .duplicate, .invalid, .tooMany, .insufficientReplaceable:
+        case .partial, .duplicate, .invalid, .tooMany, .insufficientReplaceable:
             closeDelay = nil
             installOutsideClickMonitors()
         }
 
         if let closeDelay {
-            schedule(after: closeDelay) { [weak self] in
+            timers.scheduleCompletion(after: closeDelay) { [weak self] in
                 self?.close()
             }
         }
     }
 
     private func beginExport() {
+        timers.cancelCompletion()
+        automaticSession = nil
         cancelPendingWork()
         presentationReason = .export
         removeEventMonitors()
@@ -268,6 +303,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     private func returnToShelf() {
+        timers.cancelCompletion()
         cancelPendingWork()
         removeEventMonitors()
         presentationReason = .manual
@@ -278,7 +314,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         guard presentationReason == .export else { return }
         removeEventMonitors()
         interaction.reset()
-        schedule(after: 0.25) { [weak self] in
+        timers.scheduleCompletion(after: 0.25) { [weak self] in
             self?.close()
         }
     }
@@ -295,19 +331,11 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     private func schedule(after delay: TimeInterval, action: @escaping @MainActor () -> Void) {
-        cancelPendingWork()
-        let work = DispatchWorkItem {
-            MainActor.assumeIsolated {
-                action()
-            }
-        }
-        pendingWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        timers.scheduleTransient(after: delay, action: action)
     }
 
     private func cancelPendingWork() {
-        pendingWork?.cancel()
-        pendingWork = nil
+        timers.cancelTransient()
     }
 
     private func animateOut() {
@@ -349,6 +377,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     private func installOutsideClickMonitors() {
+        removeEventMonitors()
         localEventMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]
         ) { [weak self] event in
@@ -363,6 +392,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     private func installExportEndMonitors() {
+        removeEventMonitors()
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) {
             [weak self] event in
             self?.finishExport()

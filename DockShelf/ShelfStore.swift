@@ -16,6 +16,7 @@ final class ShelfStore: ObservableObject {
     enum AddResult: Equatable {
         case added(count: Int)
         case replaced(addedCount: Int, removedCount: Int)
+        case partial(addedCount: Int, removedCount: Int, duplicateCount: Int, failedCount: Int)
         case duplicate
         case invalid
         case tooMany(limit: Int)
@@ -25,6 +26,8 @@ final class ShelfStore: ObservableObject {
             switch self {
             case .added, .replaced:
                 true
+            case let .partial(addedCount, _, _, _):
+                addedCount > 0
             case .duplicate, .invalid, .tooMany, .insufficientReplaceable:
                 false
             }
@@ -43,7 +46,9 @@ final class ShelfStore: ObservableObject {
     private static let pinnedItemsDefaultsKey = "DockShelf.pinnedItems.v1"
 
     private let defaults: UserDefaults
-    private var replacementUndoSnapshot: [ShelfItem]?
+    @Published private var replacementUndoSnapshot: [ShelfItem]?
+
+    var canUndoReplacement: Bool { replacementUndoSnapshot != nil }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -51,26 +56,35 @@ final class ShelfStore: ObservableObject {
     }
 
     @discardableResult
-    func add(_ urls: [URL]) -> AddResult {
-        var sawValidItem = false
+    func add(_ urls: [URL], failedCount: Int = 0) -> AddResult {
+        var invalidCount = failedCount
+        var duplicateCount = 0
         var incomingPaths = Set<String>()
         let existingPaths = Set(items.map(\.url.path))
         var incoming: [URL] = []
 
         for candidate in urls {
-            guard candidate.isFileURL else { continue }
+            guard candidate.isFileURL else {
+                invalidCount += 1
+                continue
+            }
             let url = candidate.standardizedFileURL
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-
-            sawValidItem = true
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                invalidCount += 1
+                continue
+            }
             guard !existingPaths.contains(url.path), incomingPaths.insert(url.path).inserted else {
+                duplicateCount += 1
                 continue
             }
             incoming.append(url)
         }
 
         guard !incoming.isEmpty else {
-            return sawValidItem ? .duplicate : .invalid
+            if invalidCount > 0 && duplicateCount > 0 {
+                return .partial(addedCount: 0, removedCount: 0, duplicateCount: duplicateCount, failedCount: invalidCount)
+            }
+            return duplicateCount > 0 ? .duplicate : .invalid
         }
         guard incoming.count <= Self.maximumItemCount else {
             return .tooMany(limit: Self.maximumItemCount)
@@ -105,6 +119,17 @@ final class ShelfStore: ObservableObject {
         if requiredReplacementCount > 0 {
             replacementUndoSnapshot = previousItems
             persistPinnedItems()
+        }
+
+        if invalidCount > 0 || duplicateCount > 0 {
+            return .partial(
+                addedCount: incoming.count,
+                removedCount: requiredReplacementCount,
+                duplicateCount: duplicateCount,
+                failedCount: invalidCount
+            )
+        }
+        if requiredReplacementCount > 0 {
             return .replaced(
                 addedCount: incoming.count,
                 removedCount: requiredReplacementCount

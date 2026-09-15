@@ -16,6 +16,9 @@
 		A10000000000000000000006 /* DockShelfTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* DockShelfTheme.swift */; };
 		A10000000000000000000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* Assets.xcassets */; };
 		A10000000000000000000008 /* ShelfInteractionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* ShelfInteractionState.swift */; };
+		A10000000000000000000009 /* ShelfImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* ShelfImport.swift */; };
+		A10000000000000000000010 /* ShelfShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* ShelfShortcut.swift */; };
+		A10000000000000000000011 /* ShelfDragMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* ShelfDragMonitor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +33,9 @@
 		B10000000000000000000008 /* DockShelfTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockShelfTheme.swift; sourceTree = "<group>"; };
 		B10000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B10000000000000000000010 /* ShelfInteractionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfInteractionState.swift; sourceTree = "<group>"; };
+		B10000000000000000000011 /* ShelfImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfImport.swift; sourceTree = "<group>"; };
+		B10000000000000000000012 /* ShelfShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfShortcut.swift; sourceTree = "<group>"; };
+		B10000000000000000000013 /* ShelfDragMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfDragMonitor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +68,9 @@
 				B10000000000000000000005 /* ShelfView.swift */,
 				B10000000000000000000008 /* DockShelfTheme.swift */,
 				B10000000000000000000010 /* ShelfInteractionState.swift */,
+				B10000000000000000000011 /* ShelfImport.swift */,
+				B10000000000000000000012 /* ShelfShortcut.swift */,
+				B10000000000000000000013 /* ShelfDragMonitor.swift */,
 				B10000000000000000000009 /* Assets.xcassets */,
 				B10000000000000000000006 /* Info.plist */,
 			);
@@ -153,6 +162,9 @@
 				A10000000000000000000005 /* ShelfView.swift in Sources */,
 				A10000000000000000000006 /* DockShelfTheme.swift in Sources */,
 				A10000000000000000000008 /* ShelfInteractionState.swift in Sources */,
+				A10000000000000000000009 /* ShelfImport.swift in Sources */,
+				A10000000000000000000010 /* ShelfShortcut.swift in Sources */,
+				A10000000000000000000011 /* ShelfDragMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -192,13 +204,13 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2026091504;
 				DEVELOPMENT_TEAM = A5L4GGX82X;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DockShelf/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.claracore.dockshelf;
 				PRODUCT_NAME = "搁这儿";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -212,13 +224,13 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2026091504;
 				DEVELOPMENT_TEAM = A5L4GGX82X;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DockShelf/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.claracore.dockshelf;
 				PRODUCT_NAME = "搁这儿";
 				SWIFT_EMIT_LOC_STRINGS = YES;

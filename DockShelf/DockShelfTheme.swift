@@ -13,8 +13,8 @@ enum DockShelfMetrics {
     static let panelRadius: CGFloat = 20
     static let itemRadius: CGFloat = 12
     static let itemWidth: CGFloat = 68
-    static let itemHeight: CGFloat = 94
-    static let iconSize: CGFloat = 46
+    static let itemHeight: CGFloat = 84
+    static let iconSize: CGFloat = 42
     static let itemSpacing: CGFloat = 8
     static let horizontalPadding: CGFloat = 16
 }

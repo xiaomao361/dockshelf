@@ -20,8 +20,7 @@ struct ShelfView: View {
     @ObservedObject var interaction: ShelfInteractionState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var refreshDate = Date()
-
-    private let refreshTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    @State private var showsClearAllConfirmation = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -33,13 +32,14 @@ struct ShelfView: View {
                     .transition(.opacity)
             } else if let feedback = transientFeedback {
                 feedbackBanner(feedback)
-                    .transition(.opacity.combined(with: .offset(y: 3)))
+                    .transition(feedbackTransition)
             }
 
             if !store.items.isEmpty && !showsDropPrompt {
                 countPill
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(8)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
                     .transition(.opacity)
             }
         }
@@ -54,19 +54,43 @@ struct ShelfView: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: DockShelfMetrics.panelRadius, style: .continuous))
         .contextMenu {
-            if store.items.contains(where: { !$0.isPinned }) {
-                Button("清空临时文件") { store.clearTemporaryItems() }
+            Button("移除全部临时引用") {
+                store.clearTemporaryItems()
             }
-            if !store.items.isEmpty {
-                Button("清空全部引用", role: .destructive) { store.clearAll() }
+            .disabled(!store.items.contains { !$0.isPinned })
+
+            Button("移除全部引用…", role: .destructive) {
+                showsClearAllConfirmation = true
+            }
+            .disabled(store.items.isEmpty)
+        }
+        .confirmationDialog(
+            "移除全部引用？",
+            isPresented: $showsClearAllConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("移除全部引用", role: .destructive) {
+                store.clearAll()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("固定和临时引用都会从搁板移除，但不会删除原文件。")
+        }
+        .onHover { interaction.panelHoverChanged?($0) }
+        .task(id: interaction.isPanelVisible) {
+            guard interaction.isPanelVisible else { return }
+            refreshDate = Date()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(2)) }
+                catch { return }
+                refreshDate = Date()
             }
         }
-        .onDrop(
-            of: [UTType.fileURL.identifier, UTType.item.identifier],
-            delegate: FileDropDelegate(store: store, interaction: interaction)
-        )
-        .onHover { interaction.panelHoverChanged?($0) }
-        .onReceive(refreshTimer) { refreshDate = $0 }
+        .onChange(of: store.canUndoReplacement) { _, canUndo in
+            if !canUndo, case .replaced = interaction.phase {
+                interaction.dismissFeedback()
+            }
+        }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: interaction.phase)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: store.items.map(\.id))
         .accessibilityIdentifier("shelf-panel")
@@ -77,42 +101,63 @@ struct ShelfView: View {
         if store.items.isEmpty {
             emptyState
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: DockShelfMetrics.itemSpacing) {
-                    ForEach(store.items) { item in
-                        ShelfItemTile(
-                            item: item,
-                            refreshDate: refreshDate,
-                            interaction: interaction,
-                            togglePinned: { store.togglePinned(item) },
-                            remove: { store.remove(item) }
-                        )
-                        .transition(.opacity.combined(with: .offset(y: 3)))
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: true) {
+                    LazyHStack(spacing: DockShelfMetrics.itemSpacing) {
+                        ForEach(store.items) { item in
+                            ShelfItemTile(
+                                item: item,
+                                refreshDate: refreshDate,
+                                interaction: interaction,
+                                togglePinned: { store.togglePinned(item) },
+                                remove: { store.remove(item) }
+                            )
+                            .id(item.id)
+                        }
+                    }
+                    .padding(.horizontal, DockShelfMetrics.horizontalPadding)
+                    .padding(.top, 24)
+                    .padding(.bottom, 38)
+                }
+                .background(HorizontalScrollWheelBridge())
+                .onAppear {
+                    if let newestID = store.items.last?.id {
+                        proxy.scrollTo(newestID, anchor: .trailing)
                     }
                 }
-                .padding(.horizontal, DockShelfMetrics.horizontalPadding)
-                .padding(.top, 18)
-                .padding(.bottom, 34)
+                .onChange(of: store.items.map(\.id)) { oldIDs, newIDs in
+                    guard let newestID = newIDs.last, !oldIDs.contains(newestID) else { return }
+                    // Wait for the newly appended tile to enter the scroll layout.
+                    DispatchQueue.main.async { proxy.scrollTo(newestID, anchor: .trailing) }
+                }
+                .overlay(alignment: .bottom) {
+                    if store.items.count > 5 && transientFeedback == nil && !showsDropPrompt {
+                        Label("左右滚动查看更多", systemImage: "arrow.left.and.right")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.bottom, 8)
+                            .allowsHitTesting(false)
+                    }
+                }
             }
-            .background(HorizontalScrollWheelBridge())
         }
     }
 
     private var emptyState: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 15) {
             Image(systemName: "arrow.down.doc")
-                .font(.system(size: 22, weight: .regular))
+                .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(emptyStateColor)
-                .frame(width: 42, height: 42)
-                .background(emptyStateColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(width: 46, height: 46)
+                .background(emptyStateColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(emptyStateTitle)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(interaction.phase == .receivingInvalid ? DockShelfTheme.invalid : Color.primary)
                 Text(emptyStateSubtitle)
-                    .font(.caption)
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(.secondary)
             }
         }
@@ -128,24 +173,24 @@ struct ShelfView: View {
             .foregroundStyle(.secondary)
             .monospacedDigit()
             .padding(.horizontal, 8)
-            .frame(height: 20)
+            .frame(height: 16)
             .background(.regularMaterial, in: Capsule(style: .continuous))
             .accessibilityLabel("搁板中有 \(store.items.count) 个项目，最多 \(ShelfStore.maximumItemCount) 个")
     }
 
     private var dropPrompt: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 15) {
             Image(systemName: dropPromptSymbol)
-                .font(.system(size: 20, weight: .medium))
+                .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(dropPromptColor)
-                .frame(width: 42, height: 42)
-                .background(dropPromptColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(width: 46, height: 46)
+                .background(dropPromptColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(dropPromptTitle)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 16, weight: .semibold))
                 Text(dropPromptSubtitle)
-                    .font(.caption)
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(.secondary)
             }
         }
@@ -171,7 +216,7 @@ struct ShelfView: View {
                 }
             }
 
-            if feedback.canUndo {
+            if feedback.canUndo && store.canUndoReplacement {
                 Button("撤销") {
                     if store.undoLastReplacement() {
                         interaction.showReplacementRestored()
@@ -193,14 +238,14 @@ struct ShelfView: View {
             }
         }
             .padding(.horizontal, 12)
-            .frame(minHeight: feedback.subtitle == nil ? 30 : 40)
+            .frame(minHeight: feedback.subtitle == nil ? 28 : 36)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(feedback.color.opacity(0.24), lineWidth: 1)
             }
             .padding(.horizontal, 18)
-            .padding(.bottom, 22)
+            .padding(.bottom, 2)
             .accessibilityElement(children: .contain)
     }
 
@@ -210,14 +255,21 @@ struct ShelfView: View {
             || interaction.phase == .returningShelfItem
     }
 
+    private var feedbackTransition: AnyTransition {
+        if interaction.phase == .success {
+            return .opacity.combined(with: .offset(y: -6))
+        }
+        return .opacity.combined(with: .offset(y: 3))
+    }
+
     private var transientFeedback: FeedbackContent? {
         switch interaction.phase {
         case .success:
-            FeedbackContent(title: "已放好", symbol: "checkmark", color: DockShelfTheme.accent)
+            FeedbackContent(title: "已搁好", symbol: "checkmark", color: DockShelfTheme.accent)
         case .invalid:
             FeedbackContent(
-                title: "这里只接受文件或文件夹",
-                subtitle: "其他内容不会加入",
+                title: "未能加入项目",
+                subtitle: "请确认本地文件可访问，再拖入重试",
                 symbol: "xmark",
                 color: DockShelfTheme.invalid,
                 canDismiss: true
@@ -227,7 +279,20 @@ struct ShelfView: View {
                 title: "已替换 \(count) 个较早文件",
                 symbol: "arrow.triangle.2.circlepath",
                 color: DockShelfTheme.warning,
-                canUndo: true
+                canUndo: true,
+                canDismiss: true
+            )
+        case let .partial(added, removed, duplicates, failed):
+            FeedbackContent(
+                title: removed > 0 ? "已加入 \(added) 项，替换 \(removed) 项" : (added > 0 ? "已加入 \(added) 项" : "没有加入新项目"),
+                subtitle: [
+                    duplicates > 0 ? "\(duplicates) 项重复" : nil,
+                    failed > 0 ? "\(failed) 项无法读取" : nil
+                ].compactMap { $0 }.joined(separator: " · "),
+                symbol: "exclamationmark.circle",
+                color: DockShelfTheme.warning,
+                canUndo: removed > 0,
+                canDismiss: true
             )
         case .duplicate:
             FeedbackContent(
@@ -272,14 +337,14 @@ struct ShelfView: View {
             DockShelfTheme.accent
         case .receivingInvalid, .invalid:
             DockShelfTheme.invalid
-        case .returningShelfItem, .replaced, .duplicate, .tooMany, .insufficientReplaceable:
+        case .returningShelfItem, .replaced, .partial, .duplicate, .tooMany, .insufficientReplaceable:
             DockShelfTheme.warning
         }
     }
 
     private var emptyStateColor: Color {
         switch interaction.phase {
-        case .idle, .returningShelfItem, .exporting, .duplicate, .tooMany, .insufficientReplaceable:
+        case .idle, .partial, .returningShelfItem, .exporting, .duplicate, .tooMany, .insufficientReplaceable:
             .secondary
         case .receivingValid, .success, .replaced, .restored:
             DockShelfTheme.accent
@@ -326,11 +391,11 @@ struct ShelfView: View {
     }
 
     private var emptyStateTitle: String {
-        interaction.phase == .success ? "已放好" : "把文件或文件夹搁到这里"
+        interaction.phase == .success ? "已搁好" : "把文件或文件夹先搁这儿"
     }
 
     private var emptyStateSubtitle: String {
-        interaction.phase == .success ? "需要时再拖出去" : "内容仍留在原位置"
+        interaction.phase == .success ? "需要时再拖出去" : "原文件不会移动，需要时再拖出去"
     }
 }
 
@@ -484,6 +549,12 @@ private struct HorizontalScrollWheelBridge: NSViewRepresentable {
 }
 
 private struct ShelfItemTile: View {
+    private enum FocusTarget: Hashable {
+        case tile
+        case pin
+        case remove
+    }
+
     let item: ShelfItem
     let refreshDate: Date
     @ObservedObject var interaction: ShelfInteractionState
@@ -491,12 +562,16 @@ private struct ShelfItemTile: View {
     let remove: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
+    @State private var fileExists = true
+    @State private var fileIcon: NSImage?
+    @FocusState private var focusTarget: FocusTarget?
 
     var body: some View {
-        let exists = item.exists
-        let _ = refreshDate
-        let tile = VStack(spacing: 7) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
+        let exists = fileExists
+        let showsControls = isHovered || focusTarget != nil
+        let isEmphasized = isHovered || focusTarget != nil
+        let tile = VStack(spacing: 5) {
+            Image(nsImage: fileIcon ?? NSImage())
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: DockShelfMetrics.iconSize, height: DockShelfMetrics.iconSize)
@@ -504,65 +579,68 @@ private struct ShelfItemTile: View {
                 .accessibilityHidden(true)
 
             Text(item.displayName)
-                .font(.caption2.weight(.medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(exists ? .primary : .secondary)
                 .lineLimit(2)
+                .truncationMode(.middle)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, minHeight: 24, alignment: .top)
         }
         .padding(.horizontal, 4)
-        .padding(.top, 10)
+        .padding(.top, 8)
         .frame(width: DockShelfMetrics.itemWidth, height: DockShelfMetrics.itemHeight, alignment: .top)
         .background(
-            DockShelfTheme.itemBackground.opacity(isHovered ? 0.86 : 0.64),
+            DockShelfTheme.itemBackground.opacity(isEmphasized ? 0.86 : 0.64),
             in: RoundedRectangle(cornerRadius: DockShelfMetrics.itemRadius, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: DockShelfMetrics.itemRadius, style: .continuous)
                 .strokeBorder(
                     exists
-                        ? (isHovered ? DockShelfTheme.accent.opacity(0.68) : DockShelfTheme.border)
+                        ? (isEmphasized ? DockShelfTheme.accent.opacity(0.68) : DockShelfTheme.border)
                         : DockShelfTheme.invalid,
-                    lineWidth: isHovered ? 1.5 : 1
+                    lineWidth: isEmphasized ? 1.5 : 1
                 )
         }
         .overlay(alignment: .topTrailing) {
-            if isHovered {
-                Button(action: remove) {
-                    Image(systemName: "xmark.circle.fill")
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 16, weight: .medium))
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .offset(x: 3, y: -3)
-                .help("移除引用")
-                .accessibilityLabel("移除 \(item.displayName)")
-                .transition(.opacity)
+            Button(action: remove) {
+                Image(systemName: "xmark.circle.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .offset(x: 4, y: -4)
+            .help("移除引用")
+            .accessibilityLabel("移除 \(item.displayName)")
+            .accessibilityHidden(!showsControls)
+            .focused($focusTarget, equals: .remove)
+            .opacity(showsControls ? 1 : 0)
+            .allowsHitTesting(showsControls)
         }
         .overlay(alignment: .topLeading) {
-            if item.isPinned || isHovered {
-                Button(action: togglePinned) {
-                    Image(systemName: item.isPinned ? "pin.fill" : "pin")
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(item.isPinned ? DockShelfTheme.accent : Color.secondary)
-                .offset(x: -3, y: -3)
-                .help(item.isPinned ? "取消固定" : "固定并在重启后保留")
-                .accessibilityLabel(
-                    item.isPinned
-                        ? "取消固定 \(item.displayName)"
-                        : "固定 \(item.displayName)"
-                )
-                .transition(.opacity)
+            Button(action: togglePinned) {
+                Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(item.isPinned ? DockShelfTheme.accent : Color.secondary)
+            .offset(x: -4, y: -4)
+            .help(item.isPinned ? "取消固定" : "固定并在重启后保留")
+            .accessibilityLabel(
+                item.isPinned
+                    ? "取消固定 \(item.displayName)"
+                    : "固定 \(item.displayName)"
+            )
+            .accessibilityHidden(!(item.isPinned || showsControls))
+            .focused($focusTarget, equals: .pin)
+            .opacity(item.isPinned || showsControls ? 1 : 0)
+            .allowsHitTesting(item.isPinned || showsControls)
         }
         .overlay(alignment: .topTrailing) {
             if !exists {
@@ -570,14 +648,21 @@ private struct ShelfItemTile: View {
                     .fill(DockShelfTheme.invalid)
                     .frame(width: 9, height: 9)
                     .padding(6)
+                    .offset(y: 24)
                     .accessibilityHidden(true)
             }
         }
-        .shadow(color: .black.opacity(isHovered ? 0.16 : 0.05), radius: isHovered ? 8 : 3, y: isHovered ? 4 : 1)
-        .scaleEffect(reduceMotion || !isHovered ? 1 : 1.018)
-        .offset(y: reduceMotion || !isHovered ? 0 : -1)
+        .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
+        .help(exists ? item.url.path : "原文件已移动、删除或暂不可访问\n\(item.url.path)")
         .contentShape(RoundedRectangle(cornerRadius: DockShelfMetrics.itemRadius, style: .continuous))
+        .focusable()
+        .focused($focusTarget, equals: .tile)
         .contextMenu {
+            Button("在 Finder 中显示") {
+                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            }
+            .disabled(!exists)
+            Divider()
             Button(item.isPinned ? "取消固定" : "固定") {
                 togglePinned()
             }
@@ -585,24 +670,22 @@ private struct ShelfItemTile: View {
                 remove()
             }
         }
+        .onAppear { refreshFileMetadata() }
+        .onChange(of: refreshDate) { _, _ in refreshFileMetadata() }
         .onHover { isHovered = $0 }
         .animation(
             reduceMotion
                 ? nil
-                : .interactiveSpring(
-                    response: 0.22,
-                    dampingFraction: 0.86,
-                    blendDuration: 0.08
-                ),
-            value: isHovered
+                : .easeOut(duration: 0.12),
+            value: isEmphasized
         )
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(item.displayName)
+        .accessibilityLabel("\(item.displayName)，\(item.url.deletingLastPathComponent().path)")
         .accessibilityValue(item.isPinned ? "已固定" : "临时文件")
         .accessibilityHint(
             exists
                 ? "按住并拖动到其他窗口"
-                : "原文件已失效"
+                : "原文件已移动、删除或暂不可访问"
         )
         .accessibilityAction(named: item.isPinned ? "取消固定" : "固定") {
             togglePinned()
@@ -629,91 +712,12 @@ private struct ShelfItemTile: View {
             tile
         }
     }
-}
 
-private struct FileDropDelegate: DropDelegate {
-    let store: ShelfStore
-    let interaction: ShelfInteractionState
-
-    func validateDrop(info: DropInfo) -> Bool {
-        !isShelfItemDrag(info)
-    }
-
-    func dropEntered(info: DropInfo) {
-        if isShelfItemDrag(info) {
-            interaction.showReturningShelfItem()
-            return
+    private func refreshFileMetadata() {
+        let exists = item.exists
+        if fileIcon == nil || exists != fileExists {
+            fileIcon = NSWorkspace.shared.icon(forFile: item.url.path)
         }
-        interaction.panelDropEntered(
-            isValid: info.hasItemsConforming(to: [UTType.fileURL.identifier])
-        )
-    }
-
-    func dropExited(info: DropInfo) {
-        if interaction.phase == .returningShelfItem {
-            interaction.resumeExport()
-            return
-        }
-        interaction.panelDropExited()
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        if isShelfItemDrag(info) {
-            return DropProposal(operation: .cancel)
-        }
-        let isValid = info.hasItemsConforming(to: [UTType.fileURL.identifier])
-        return DropProposal(operation: isValid ? .copy : .cancel)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        if isShelfItemDrag(info) {
-            interaction.resumeExport()
-            return false
-        }
-        let providers = info.itemProviders(for: [UTType.fileURL.identifier])
-        guard !providers.isEmpty else {
-            interaction.finishDrop(result: .invalid)
-            return false
-        }
-
-        let group = DispatchGroup()
-        let lock = NSLock()
-        var urls: [URL] = []
-
-        for provider in providers {
-            group.enter()
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                if let url = Self.fileURL(from: item) {
-                    lock.lock()
-                    urls.append(url)
-                    lock.unlock()
-                }
-                group.leave()
-            }
-        }
-
-        group.notify(queue: .main) {
-            let resolvedURLs = urls
-            Task { @MainActor in
-                interaction.finishDrop(result: store.add(resolvedURLs))
-            }
-        }
-        return true
-    }
-
-    private func isShelfItemDrag(_ info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [UTType.dockShelfItem.identifier])
-    }
-
-    private static func fileURL(from item: NSSecureCoding?) -> URL? {
-        if let url = item as? URL { return url }
-        if let url = item as? NSURL { return url as URL }
-        if let data = item as? Data {
-            let value = String(decoding: data, as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\0")))
-            return URL(string: value)
-        }
-        if let value = item as? String { return URL(string: value) }
-        return nil
+        fileExists = exists
     }
 }

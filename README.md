@@ -1,6 +1,6 @@
 # 搁这儿
 
-“搁这儿”是一款原生 macOS 菜单栏文件搁板。把待会儿要用的文件或文件夹拖到菜单栏图标，需要时再从搁板拖到 Finder、浏览器、聊天或邮件应用。
+“搁这儿”是一款原生 macOS 菜单栏文件搁板。拖起待会儿要用的文件或文件夹，放进自动展开的搁板，需要时再从搁板拖到 Finder、浏览器、聊天或邮件应用。
 
 它只保存原位置的引用，不复制、移动、上传或修改文件内容。
 
@@ -9,7 +9,7 @@
 - Apple Silicon Mac（arm64）
 - macOS 14 Sonoma 或更高版本
 
-v0.1.0 不支持 Intel Mac、Windows 或 Mac App Store 安装。
+当前版本不支持 Intel Mac、Windows 或 Mac App Store 安装。
 
 ## 安装
 
@@ -20,6 +20,8 @@ v0.1.0 不支持 Intel Mac、Windows 或 Mac App Store 安装。
 发布版使用 Developer ID 签名并经过 Apple 公证。更新版本时重新下载 DMG，并用新版应用替换旧版即可。
 
 ## 使用
+
+- v0.1.4 默认开启自动展开：拖起文件后，搁板固定在菜单栏图标下方出现，移进去松手即可；成功放入约 0.35 秒后收起，鼠标停留不会取消收起。菜单栏右键可关闭“拖动文件时自动展开”；Control–Option–空格保留为备用入口。
 
 - 将文件或文件夹拖到菜单栏图标，搁板会自动展开并接收引用。
 - 点击菜单栏图标可以显示或收起搁板；有内容时悬停 300 ms 也会展开。
@@ -53,7 +55,7 @@ xcodebuild \
 - [原生实现与验收边界](docs/NATIVE_M0.md)
 - [视觉决策](docs/DESIGN_DIRECTION.md)
 - [品牌资产](docs/brand/README.md)
-- [v0.1.0 发布说明](docs/RELEASE_NOTES_v0.1.0.md)
+- [v0.1.4 发布说明](docs/RELEASE_NOTES_v0.1.4.md)
 
 ## 授权
 

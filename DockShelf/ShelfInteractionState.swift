@@ -8,6 +8,7 @@ final class ShelfInteractionState: ObservableObject {
         case receivingInvalid
         case returningShelfItem
         case success
+        case partial(addedCount: Int, removedCount: Int, duplicateCount: Int, failedCount: Int)
         case invalid
         case replaced(count: Int)
         case duplicate
@@ -18,6 +19,7 @@ final class ShelfInteractionState: ObservableObject {
     }
 
     @Published private(set) var phase: Phase = .idle
+    @Published var isPanelVisible = false
 
     var panelHoverChanged: ((Bool) -> Void)?
     var panelDropChanged: ((Bool) -> Void)?
@@ -48,6 +50,8 @@ final class ShelfInteractionState: ObservableObject {
             phase = .success
         case let .replaced(_, removedCount):
             phase = .replaced(count: removedCount)
+        case let .partial(added, removed, duplicates, failed):
+            phase = .partial(addedCount: added, removedCount: removed, duplicateCount: duplicates, failedCount: failed)
         case .duplicate:
             phase = .duplicate
         case .invalid:
@@ -91,10 +95,62 @@ final class ShelfInteractionState: ObservableObject {
 private extension ShelfInteractionState.Phase {
     var isFeedback: Bool {
         switch self {
-        case .success, .invalid, .replaced, .duplicate, .tooMany, .insufficientReplaceable, .restored:
+        case .success, .partial, .invalid, .replaced, .duplicate, .tooMany, .insufficientReplaceable, .restored:
             true
         case .idle, .receivingValid, .receivingInvalid, .returningShelfItem, .exporting:
             false
         }
+    }
+}
+
+/// Hover changes may cancel transient work but must never cancel completion feedback.
+@MainActor
+final class ShelfPanelTimers {
+    private var transient: DispatchWorkItem?
+    private var completion: DispatchWorkItem?
+    private var transientGeneration = 0
+    private var completionGeneration = 0
+
+    func scheduleTransient(after delay: TimeInterval, action: @escaping @MainActor () -> Void) {
+        cancelTransient()
+        let generation = transientGeneration
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.transientGeneration == generation else { return }
+                action()
+            }
+        }
+        transient = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    func scheduleCompletion(after delay: TimeInterval, action: @escaping @MainActor () -> Void) {
+        cancelCompletion()
+        let generation = completionGeneration
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.completionGeneration == generation else { return }
+                action()
+            }
+        }
+        completion = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    func cancelTransient() {
+        transientGeneration += 1
+        transient?.cancel()
+        transient = nil
+    }
+
+    func cancelCompletion() {
+        completionGeneration += 1
+        completion?.cancel()
+        completion = nil
+    }
+
+    deinit {
+        transient?.cancel()
+        completion?.cancel()
     }
 }
