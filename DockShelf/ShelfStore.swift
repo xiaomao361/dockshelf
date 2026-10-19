@@ -11,6 +11,41 @@ struct ShelfItem: Identifiable, Hashable {
     var exists: Bool { FileManager.default.fileExists(atPath: url.path) }
 }
 
+/// Local, in-memory recovery details. These never enter persistence or diagnostics.
+struct ShelfImportIssue: Identifiable, Equatable {
+    enum Reason: Equatable {
+        case unavailable
+        case notLocalFile
+        case unknown
+    }
+
+    let id: String
+    let url: URL?
+    let reason: Reason
+
+    init(id: String = UUID().uuidString, url: URL? = nil, reason: Reason) {
+        self.id = id
+        self.url = url
+        self.reason = reason
+    }
+
+    var displayName: String {
+        guard let url, !url.lastPathComponent.isEmpty else { return "无法识别的项目" }
+        return url.lastPathComponent
+    }
+
+    var message: String {
+        switch reason {
+        case .unavailable:
+            "原文件已移动、删除或暂不可访问"
+        case .notLocalFile:
+            "这里只接受本地文件或文件夹"
+        case .unknown:
+            "无法读取原始文件引用，请从来源重新拖入"
+        }
+    }
+}
+
 @MainActor
 final class ShelfStore: ObservableObject {
     enum AddResult: Equatable {
@@ -37,6 +72,7 @@ final class ShelfStore: ObservableObject {
     static let maximumItemCount = 20
 
     @Published private(set) var items: [ShelfItem]
+    @Published private(set) var lastImportIssues: [ShelfImportIssue] = []
 
     private struct PersistedPinnedItem: Codable {
         let path: String
@@ -56,8 +92,21 @@ final class ShelfStore: ObservableObject {
     }
 
     @discardableResult
-    func add(_ urls: [URL], failedCount: Int = 0) -> AddResult {
+    func add(
+        _ urls: [URL],
+        failedCount: Int = 0,
+        issues: [ShelfImportIssue] = []
+    ) -> AddResult {
         var invalidCount = failedCount
+        // Details describe the receiver's failures; they must never add to or
+        // reduce its authoritative count. Unidentified entries remain explicit.
+        var importIssues = Array(issues.prefix(max(0, failedCount)))
+        if importIssues.count < failedCount {
+            importIssues.append(contentsOf: (importIssues.count..<failedCount).map { _ in
+                ShelfImportIssue(reason: .unknown)
+            })
+        }
+        defer { lastImportIssues = importIssues }
         var duplicateCount = 0
         var incomingPaths = Set<String>()
         let existingPaths = Set(items.map(\.url.path))
@@ -66,11 +115,13 @@ final class ShelfStore: ObservableObject {
         for candidate in urls {
             guard candidate.isFileURL else {
                 invalidCount += 1
+                importIssues.append(ShelfImportIssue(reason: .notLocalFile))
                 continue
             }
             let url = candidate.standardizedFileURL
             guard FileManager.default.fileExists(atPath: url.path) else {
                 invalidCount += 1
+                importIssues.append(ShelfImportIssue(url: url, reason: .unavailable))
                 continue
             }
             guard !existingPaths.contains(url.path), incomingPaths.insert(url.path).inserted else {

@@ -32,6 +32,8 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     private var animationGeneration = 0
     private var automaticSession: UUID?
 
+    var isVisible: Bool { panel.isVisible }
+
     init(store: ShelfStore) {
         self.store = store
         panel = ShelfPanel(
@@ -150,14 +152,19 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     func statusDragExited() {
         isStatusDragActive = false
         if !isPanelDragActive {
-            scheduleTransientClose(after: 0.45)
+            interaction.cancelDropTarget()
+            if interaction.hasPersistentFeedback {
+                installOutsideClickMonitors()
+            } else if automaticSession == nil {
+                scheduleTransientClose(after: 0.45)
+            }
         }
     }
 
     @discardableResult
     func receiveStatusDrop(_ batch: ShelfImport.Batch) -> Bool {
         isStatusDragActive = false
-        let result = store.add(batch.urls, failedCount: batch.failedCount)
+        let result = store.add(batch.urls, failedCount: batch.failedCount, issues: batch.issues)
         interaction.finishDrop(result: result)
         return result.accepted
     }
@@ -257,8 +264,12 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
             timers.cancelCompletion()
             cancelPendingWork()
             if automaticSession == nil { presentationReason = .drop }
-        } else if automaticSession == nil && !isStatusDragActive {
-            scheduleTransientClose(after: 0.45)
+        } else if !isStatusDragActive {
+            if interaction.hasPersistentFeedback {
+                installOutsideClickMonitors()
+            } else if automaticSession == nil {
+                scheduleTransientClose(after: 0.45)
+            }
         }
     }
 
@@ -297,9 +308,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         removeEventMonitors()
         installExportEndMonitors()
 
-        schedule(after: 15) { [weak self] in
-            self?.finishExport()
-        }
+        scheduleExportFallback(after: 15)
     }
 
     private func returnToShelf() {
@@ -316,6 +325,17 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         interaction.reset()
         timers.scheduleCompletion(after: 0.25) { [weak self] in
             self?.close()
+        }
+    }
+
+    private func scheduleExportFallback(after delay: TimeInterval) {
+        timers.scheduleCompletion(after: delay) { [weak self] in
+            guard let self, self.presentationReason == .export else { return }
+            guard NSEvent.pressedMouseButtons & 1 == 0 else {
+                self.scheduleExportFallback(after: 1)
+                return
+            }
+            self.finishExport()
         }
     }
 
@@ -405,6 +425,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     private func closeIfPointerIsOutside() {
+        guard !interaction.isShowingDetails else { return }
         let pointer = NSEvent.mouseLocation
         guard !panel.frame.contains(pointer), !anchorFrame.contains(pointer) else { return }
         close()

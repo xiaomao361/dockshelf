@@ -21,6 +21,8 @@ struct ShelfView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var refreshDate = Date()
     @State private var showsClearAllConfirmation = false
+    @State private var inspectedItemID: String?
+    @State private var scrollItemID: String?
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -35,12 +37,26 @@ struct ShelfView: View {
                     .transition(feedbackTransition)
             }
 
-            if !store.items.isEmpty && !showsDropPrompt {
+            if !store.items.isEmpty {
                 countPill
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .padding(.horizontal, 8)
                     .padding(.top, 4)
                     .transition(.opacity)
+            }
+
+            // Feedback owns the footer; keep the inspected file identifiable in the header.
+            if transientFeedback != nil && !showsDropPrompt,
+               let item = store.items.first(where: { $0.id == inspectedItemID }) {
+                Text(item.displayName)
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.leading, 16)
+                    .padding(.trailing, 72)
+                    .padding(.top, 5)
+                    .allowsHitTesting(false)
             }
         }
         .frame(width: DockShelfMetrics.panelSize.width, height: DockShelfMetrics.panelSize.height)
@@ -91,6 +107,12 @@ struct ShelfView: View {
                 interaction.dismissFeedback()
             }
         }
+        .onChange(of: interaction.isPanelVisible) { _, visible in
+            if !visible { inspectedItemID = nil }
+        }
+        .onChange(of: interaction.phase) { _, _ in
+            announceFeedback()
+        }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: interaction.phase)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: store.items.map(\.id))
         .accessibilityIdentifier("shelf-panel")
@@ -109,16 +131,26 @@ struct ShelfView: View {
                                 item: item,
                                 refreshDate: refreshDate,
                                 interaction: interaction,
+                                inspect: { isInspecting in
+                                    if isInspecting { inspectedItemID = item.id }
+                                    else if inspectedItemID == item.id { inspectedItemID = nil }
+                                },
                                 togglePinned: { store.togglePinned(item) },
                                 remove: { store.remove(item) }
                             )
                             .id(item.id)
+                            .transition(reduceMotion ? .opacity : .asymmetric(
+                                insertion: .opacity.combined(with: .offset(y: -4)),
+                                removal: .opacity
+                            ))
                         }
                     }
+                    .scrollTargetLayout()
                     .padding(.horizontal, DockShelfMetrics.horizontalPadding)
                     .padding(.top, 24)
                     .padding(.bottom, 38)
                 }
+                .scrollPosition(id: $scrollItemID, anchor: .leading)
                 .background(HorizontalScrollWheelBridge())
                 .onAppear {
                     if let newestID = store.items.last?.id {
@@ -131,15 +163,74 @@ struct ShelfView: View {
                     DispatchQueue.main.async { proxy.scrollTo(newestID, anchor: .trailing) }
                 }
                 .overlay(alignment: .bottom) {
-                    if store.items.count > 5 && transientFeedback == nil && !showsDropPrompt {
-                        Label("左右滚动查看更多", systemImage: "arrow.left.and.right")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.bottom, 8)
-                            .allowsHitTesting(false)
+                    if transientFeedback == nil && !showsDropPrompt {
+                        shelfFooter(proxy: proxy)
                     }
                 }
             }
+        }
+    }
+
+    private func shelfFooter(proxy: ScrollViewProxy) -> some View {
+        HStack(spacing: 6) {
+            if store.items.count > 5 {
+                pageButton("向左翻动", symbol: "chevron.left") { scrollPage(-1, proxy: proxy) }
+            }
+
+            Group {
+                if let item = store.items.first(where: { $0.id == inspectedItemID }) {
+                    VStack(spacing: 1) {
+                        Text(item.displayName)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text(item.url.deletingLastPathComponent().path)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(item.url.path)
+                    .accessibilityElement(children: .combine)
+                } else if store.items.count > 5 {
+                    Text("左右翻动或滚动查看更多")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("拖到需要的位置 · 固定后重启仍保留")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            if store.items.count > 5 {
+                pageButton("向右翻动", symbol: "chevron.right") { scrollPage(1, proxy: proxy) }
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 36)
+        .padding(.bottom, 1)
+    }
+
+    private func pageButton(_ label: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    private func scrollPage(_ direction: Int, proxy: ScrollViewProxy) {
+        let index = store.items.firstIndex { $0.id == scrollItemID } ?? 0
+        let target = min(max(0, index + direction * 5), store.items.count - 1)
+        guard store.items.indices.contains(target) else { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
+            proxy.scrollTo(store.items[target].id, anchor: .leading)
         }
     }
 
@@ -215,6 +306,22 @@ struct ShelfView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if hasImportIssues {
+                Button {
+                    interaction.isShowingDetails.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                        .frame(width: 24, height: 28)
+                }
+                .buttonStyle(.borderless)
+                .help("查看未加入项目")
+                .accessibilityLabel("查看未加入项目及原因")
+                .popover(isPresented: $interaction.isShowingDetails, arrowEdge: .bottom) {
+                    ShelfImportIssuesView(issues: store.lastImportIssues)
+                }
+            }
 
             if feedback.canUndo && store.canUndoReplacement {
                 Button("撤销") {
@@ -256,6 +363,7 @@ struct ShelfView: View {
     }
 
     private var feedbackTransition: AnyTransition {
+        if reduceMotion { return .opacity }
         if interaction.phase == .success {
             return .opacity.combined(with: .offset(y: -6))
         }
@@ -265,7 +373,7 @@ struct ShelfView: View {
     private var transientFeedback: FeedbackContent? {
         switch interaction.phase {
         case .success:
-            FeedbackContent(title: "已搁好", symbol: "checkmark", color: DockShelfTheme.accent)
+            FeedbackContent(title: "已搁好 \(interaction.lastAddedCount) 项", symbol: "checkmark", color: DockShelfTheme.accent)
         case .invalid:
             FeedbackContent(
                 title: "未能加入项目",
@@ -329,6 +437,26 @@ struct ShelfView: View {
         }
     }
 
+    private var hasImportIssues: Bool {
+        guard !store.lastImportIssues.isEmpty else { return false }
+        switch interaction.phase {
+        case .invalid: return true
+        case let .partial(_, _, _, failed): return failed > 0
+        default: return false
+        }
+    }
+
+    private func announceFeedback() {
+        guard interaction.isPanelVisible, let feedback = transientFeedback,
+              interaction.phase != .exporting else { return }
+        let message = [feedback.title, feedback.subtitle].compactMap { $0 }.joined(separator: "，")
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue]
+        )
+    }
+
     private var panelBorder: Color {
         switch interaction.phase {
         case .idle, .exporting:
@@ -386,7 +514,13 @@ struct ShelfView: View {
         case .returningShelfItem:
             "请拖到搁板外使用"
         default:
-            "只添加引用，内容仍在原位置"
+            if store.items.count >= ShelfStore.maximumItemCount {
+                store.items.allSatisfy(\.isPinned)
+                    ? "固定项已满，新项目需先腾出位置"
+                    : "已满，加入新项目可能替换较早的临时引用"
+            } else {
+                "只添加引用，内容仍在原位置"
+            }
         }
     }
 
@@ -396,6 +530,45 @@ struct ShelfView: View {
 
     private var emptyStateSubtitle: String {
         interaction.phase == .success ? "需要时再拖出去" : "原文件不会移动，需要时再拖出去"
+    }
+}
+
+private struct ShelfImportIssuesView: View {
+    let issues: [ShelfImportIssue]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("未加入的项目")
+                .font(.headline)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(issues) { issue in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(issue.displayName)
+                                .font(.callout.weight(.medium))
+                                .lineLimit(2)
+                            Text(issue.message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if let url = issue.url {
+                                Text(url.path)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: min(240, CGFloat(issues.count) * 82))
+            Text("详情仅留在本机，原文件不会被修改。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(width: 320)
     }
 }
 
@@ -558,6 +731,7 @@ private struct ShelfItemTile: View {
     let item: ShelfItem
     let refreshDate: Date
     @ObservedObject var interaction: ShelfInteractionState
+    let inspect: (Bool) -> Void
     let togglePinned: () -> Void
     let remove: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -585,6 +759,8 @@ private struct ShelfItemTile: View {
                 .truncationMode(.middle)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, minHeight: 24, alignment: .top)
+                .opacity(showsControls ? 0 : 1)
+                .accessibilityHidden(showsControls)
         }
         .padding(.horizontal, 4)
         .padding(.top, 8)
@@ -602,45 +778,45 @@ private struct ShelfItemTile: View {
                     lineWidth: isEmphasized ? 1.5 : 1
                 )
         }
-        .overlay(alignment: .topTrailing) {
-            Button(action: remove) {
-                Image(systemName: "xmark.circle.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+            HStack(spacing: 4) {
+                Button(action: togglePinned) {
+                    Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(item.isPinned ? DockShelfTheme.accent : Color.secondary)
+                .help(item.isPinned ? "取消固定" : "固定并在重启后保留")
+                .accessibilityLabel(item.isPinned ? "取消固定 \(item.displayName)" : "固定 \(item.displayName)")
+                .focused($focusTarget, equals: .pin)
+
+                Button(action: remove) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(.secondary)
+                .help("移除引用")
+                .accessibilityLabel("移除 \(item.displayName)")
+                .focused($focusTarget, equals: .remove)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .offset(x: 4, y: -4)
-            .help("移除引用")
-            .accessibilityLabel("移除 \(item.displayName)")
-            .accessibilityHidden(!showsControls)
-            .focused($focusTarget, equals: .remove)
+            .symbolRenderingMode(.hierarchical)
             .opacity(showsControls ? 1 : 0)
+            .accessibilityHidden(!showsControls)
             .allowsHitTesting(showsControls)
         }
         .overlay(alignment: .topLeading) {
-            Button(action: togglePinned) {
-                Image(systemName: item.isPinned ? "pin.fill" : "pin")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 13, weight: .medium))
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
+            if item.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DockShelfTheme.accent)
+                    .padding(5)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(item.isPinned ? DockShelfTheme.accent : Color.secondary)
-            .offset(x: -4, y: -4)
-            .help(item.isPinned ? "取消固定" : "固定并在重启后保留")
-            .accessibilityLabel(
-                item.isPinned
-                    ? "取消固定 \(item.displayName)"
-                    : "固定 \(item.displayName)"
-            )
-            .accessibilityHidden(!(item.isPinned || showsControls))
-            .focused($focusTarget, equals: .pin)
-            .opacity(item.isPinned || showsControls ? 1 : 0)
-            .allowsHitTesting(item.isPinned || showsControls)
         }
         .overlay(alignment: .topTrailing) {
             if !exists {
@@ -648,7 +824,6 @@ private struct ShelfItemTile: View {
                     .fill(DockShelfTheme.invalid)
                     .frame(width: 9, height: 9)
                     .padding(6)
-                    .offset(y: 24)
                     .accessibilityHidden(true)
             }
         }
@@ -673,6 +848,9 @@ private struct ShelfItemTile: View {
         .onAppear { refreshFileMetadata() }
         .onChange(of: refreshDate) { _, _ in refreshFileMetadata() }
         .onHover { isHovered = $0 }
+        .onChange(of: isHovered) { _, _ in inspect(isHovered || focusTarget != nil) }
+        .onChange(of: focusTarget) { _, _ in inspect(isHovered || focusTarget != nil) }
+        .onDisappear { inspect(false) }
         .animation(
             reduceMotion
                 ? nil

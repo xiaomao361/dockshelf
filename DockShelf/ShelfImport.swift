@@ -8,6 +8,13 @@ enum ShelfImport {
     struct Batch {
         let urls: [URL]
         let failedCount: Int
+        let issues: [ShelfImportIssue]
+
+        init(urls: [URL], failedCount: Int, issues: [ShelfImportIssue] = []) {
+            self.urls = urls
+            self.failedCount = failedCount
+            self.issues = issues
+        }
     }
 
     static func read(_ pasteboard: NSPasteboard) -> Batch {
@@ -16,7 +23,11 @@ enum ShelfImport {
             forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]
         ) as? [NSURL] ?? []
         let urls = values.map { $0 as URL }.filter(\.isFileURL)
-        return Batch(urls: urls, failedCount: max(0, itemCount - urls.count))
+        let failedCount = max(0, itemCount - urls.count)
+        // readObjects does not identify which original pasteboard items failed.
+        // Preserve that uncertainty instead of assigning names by array position.
+        let issues = (0..<failedCount).map { _ in ShelfImportIssue(reason: .unknown) }
+        return Batch(urls: urls, failedCount: failedCount, issues: issues)
     }
 
     static func isShelfDrag(_ pasteboard: NSPasteboard) -> Bool {
@@ -79,7 +90,7 @@ final class ShelfHostingView: NSHostingView<ShelfView> {
             return false
         }
         let batch = ShelfImport.read(sender.draggingPasteboard)
-        let result = store.add(batch.urls, failedCount: batch.failedCount)
+        let result = store.add(batch.urls, failedCount: batch.failedCount, issues: batch.issues)
         // Counts only: no private paths, names or file content in diagnostics.
         NSLog("Shelf native drop: urls=%ld unreadable=%ld accepted=%@", batch.urls.count, batch.failedCount, result.accepted ? "true" : "false")
         interaction.finishDrop(result: result)

@@ -62,11 +62,6 @@ final class StatusBarController: NSObject {
         panelController.toggleManual(relativeTo: button)
     }
 
-    @objc private func showShelf() {
-        guard let button = statusItem.button else { return }
-        panelController.showManual(relativeTo: button)
-    }
-
     @objc private func showShelfUsingShortcut() {
         guard let button = statusItem.button else { return }
         panelController.showUsingShortcut(relativeTo: button)
@@ -115,15 +110,16 @@ final class StatusBarController: NSObject {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        let showItem = NSMenuItem(title: "显示搁板", action: #selector(showShelf), keyEquivalent: "")
+        let shortcutAvailable = shortcut?.isRegistered == true
+        let showTitle = panelController.isVisible ? "收起搁板" : "显示搁板"
+        let showItem = NSMenuItem(
+            title: shortcutAvailable ? showTitle : "\(showTitle)（快捷键不可用）",
+            action: #selector(showShelfUsingShortcut),
+            keyEquivalent: shortcutAvailable ? " " : ""
+        )
+        showItem.keyEquivalentModifierMask = [.control, .option]
         showItem.target = self
         menu.addItem(showItem)
-        let nearItem = NSMenuItem(
-            title: shortcut?.isRegistered == true ? "显示搁板（⌃⌥空格）" : "显示搁板（快捷键不可用）",
-            action: #selector(showShelfUsingShortcut), keyEquivalent: ""
-        )
-        nearItem.target = self
-        menu.addItem(nearItem)
         let automaticItem = NSMenuItem(
             title: automaticDragEnabled && dragMonitor?.isMonitoring != true ? "自动展开不可用（点击重试）" : "拖动文件时自动展开",
             action: #selector(toggleAutomaticDrag), keyEquivalent: ""

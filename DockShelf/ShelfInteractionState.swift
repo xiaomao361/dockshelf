@@ -19,7 +19,12 @@ final class ShelfInteractionState: ObservableObject {
     }
 
     @Published private(set) var phase: Phase = .idle
+    @Published private(set) var lastAddedCount = 0
     @Published var isPanelVisible = false
+    @Published var isShowingDetails = false
+    private var feedbackBeforeDrop: Phase?
+
+    var hasPersistentFeedback: Bool { phase.isPersistentFeedback }
 
     var panelHoverChanged: ((Bool) -> Void)?
     var panelDropChanged: ((Bool) -> Void)?
@@ -29,6 +34,10 @@ final class ShelfInteractionState: ObservableObject {
     var exportBegan: (() -> Void)?
 
     func showDropTarget(isValid: Bool) {
+        isShowingDetails = false
+        if !phase.isDropTarget {
+            feedbackBeforeDrop = phase.isPersistentFeedback ? phase : nil
+        }
         phase = isValid ? .receivingValid : .receivingInvalid
     }
 
@@ -38,38 +47,57 @@ final class ShelfInteractionState: ObservableObject {
     }
 
     func panelDropExited() {
+        cancelDropTarget()
         panelDropChanged?(false)
-        if !phase.isFeedback && phase != .exporting {
-            phase = .idle
-        }
+    }
+
+    func cancelDropTarget() {
+        guard phase.isDropTarget else { return }
+        phase = feedbackBeforeDrop ?? .idle
+        feedbackBeforeDrop = nil
     }
 
     func finishDrop(result: ShelfStore.AddResult) {
+        isShowingDetails = false
+        feedbackBeforeDrop = nil
         switch result {
-        case .added:
+        case let .added(count):
+            lastAddedCount = count
             phase = .success
-        case let .replaced(_, removedCount):
+        case let .replaced(addedCount, removedCount):
+            lastAddedCount = addedCount
             phase = .replaced(count: removedCount)
         case let .partial(added, removed, duplicates, failed):
+            lastAddedCount = added
             phase = .partial(addedCount: added, removedCount: removed, duplicateCount: duplicates, failedCount: failed)
         case .duplicate:
+            lastAddedCount = 0
             phase = .duplicate
         case .invalid:
+            lastAddedCount = 0
             phase = .invalid
         case let .tooMany(limit):
+            lastAddedCount = 0
             phase = .tooMany(limit: limit)
         case let .insufficientReplaceable(required, available):
+            lastAddedCount = 0
             phase = .insufficientReplaceable(required: required, available: available)
         }
         dropFinished?(result)
     }
 
     func showReplacementRestored() {
+        isShowingDetails = false
+        feedbackBeforeDrop = nil
+        lastAddedCount = 0
         phase = .restored
         replacementUndone?()
     }
 
     func dismissFeedback() {
+        isShowingDetails = false
+        feedbackBeforeDrop = nil
+        lastAddedCount = 0
         phase = .idle
         feedbackDismissed?()
     }
@@ -83,23 +111,31 @@ final class ShelfInteractionState: ObservableObject {
     }
 
     func beginExport() {
+        isShowingDetails = false
         phase = .exporting
         exportBegan?()
     }
 
     func reset() {
+        feedbackBeforeDrop = nil
+        lastAddedCount = 0
+        isShowingDetails = false
         phase = .idle
     }
 }
 
 private extension ShelfInteractionState.Phase {
-    var isFeedback: Bool {
+    var isPersistentFeedback: Bool {
         switch self {
-        case .success, .partial, .invalid, .replaced, .duplicate, .tooMany, .insufficientReplaceable, .restored:
+        case .partial, .invalid, .replaced, .duplicate, .tooMany, .insufficientReplaceable:
             true
-        case .idle, .receivingValid, .receivingInvalid, .returningShelfItem, .exporting:
+        case .idle, .receivingValid, .receivingInvalid, .returningShelfItem, .exporting, .success, .restored:
             false
         }
+    }
+
+    var isDropTarget: Bool {
+        self == .receivingValid || self == .receivingInvalid
     }
 }
 
