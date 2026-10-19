@@ -2,7 +2,7 @@
 
 版本：0.1.5（2026101901）  
 日期：2026-10-19（Asia/Shanghai）  
-状态：正式 App/DMG 已完成 Developer ID 签名与 Apple 公证，GitHub 发布准备中。见 [发布回执](RELEASE_v0.1.5.md)。
+状态：[正式 Latest Release 已发布](https://github.com/xiaomao361/dockshelf/releases/tag/v0.1.5)。App/DMG 已完成 Developer ID 签名、Apple 公证及公开下载复验，见 [发布回执](RELEASE_v0.1.5.md)。
 
 ## 交互修复
 

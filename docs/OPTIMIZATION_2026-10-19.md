@@ -6,7 +6,7 @@
 
 基于 v0.1.4 的源码审查，改善拖放会话稳定性、文件辨认、容量预期与结果反馈。保持原生 macOS 菜单栏形态、420 × 146 pt 面板、20 项上限、只保存原文件引用、固定保护与最早临时项替换规则。
 
-目标版本：**0.1.5（2026101901）**。初始优化后，用户先授权本地打包，再明确授权正式 Release。App/DMG 双层签名、公证与 Gatekeeper 检查已通过，继续提交推送及 GitHub 发布，见 [发布回执](RELEASE_v0.1.5.md)。安装和 UI 操作仍由用户执行。
+目标版本：**0.1.5（2026101901）**，已正式发布。初始优化后，用户先授权本地打包，再明确授权正式 Release。App/DMG 双层签名、公证、Gatekeeper、GitHub 上传与公开下载复验均已通过，见 [发布回执](RELEASE_v0.1.5.md)。安装和 UI 操作仍由用户执行。
 
 ## 实施顺序
 
@@ -73,7 +73,7 @@ xcrun swiftc -target arm64-apple-macos14.0 -parse-as-library \
 /tmp/dockshelf-refinement-smoke
 ```
 
-构建命令沿用 `HANDOFF.md`。原始未签名构建为 `.build/DerivedData/Build/Products/Release/搁这儿.app`；供安装的签名 DMG 为 `.build/releases/0.1.5-2026101901/DockShelf-0.1.5-2026101901-macos-arm64.dmg`。
+构建命令沿用 `HANDOFF.md`。原始未签名构建为 `.build/DerivedData/Build/Products/Release/搁这儿.app`；正式公证 DMG 为 `.build/releases/v0.1.5/DockShelf-0.1.5-macos-arm64.dmg`，早先未公证本地试用包另行保留。
 
 ### 待用户人工验收
 
@@ -84,4 +84,4 @@ xcrun swiftc -target arm64-apple-macos14.0 -parse-as-library \
 5. 失败详情打开、关闭，再开始新拖入、取消或返回；反馈/撤销保留，外部点击仍能正常收起。
 6. 深浅色、复杂壁纸、减少动态效果、减少透明度、键盘焦点及 VoiceOver 的结果播报。
 
-后续已按用户授权完成正式 App/DMG 签名、公证、票据附加、Gatekeeper、镜像及只读挂载文件比对，提交推送及公开发布按 [发布回执](RELEASE_v0.1.5.md) 收尾。没有进行安装或 UI 操作；真实体验验收保持独立。
+后续已按用户授权完成源码提交推送、正式 App/DMG 签名、公证、票据附加、Gatekeeper、镜像及只读挂载文件比对、GitHub Release 与公开下载复验，详见 [发布回执](RELEASE_v0.1.5.md)。没有进行安装或 UI 操作；真实体验验收保持独立。

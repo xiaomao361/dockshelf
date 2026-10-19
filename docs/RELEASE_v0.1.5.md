@@ -21,8 +21,14 @@
 - 镜像校验及非交互只读挂载通过，挂载 App 的七个文件与签名/公证 staging 逐一匹配；原本地测试 App 的六个文件保持不变，新增的是公证票据
 - `Applications` 链接和安装说明正确，挂载卷已卸载；机器回执见产物目录 `package-verification.json`
 
-## 发布状态
+## 公开发布复验
 
-正式分发检查通过，准备提交源码、推送 `v0.1.5` 标签及上传 GitHub Release；公开下载复验完成后补充记录。
+- 正式 Latest Release：[搁这儿 v0.1.5](https://github.com/xiaomao361/dockshelf/releases/tag/v0.1.5)，不是草稿或预发布
+- 标签提交：`b83a0c21d8c0805e26f772a9bdcd4b56b03a8192`
+- 已上传 `DockShelf-0.1.5-macos-arm64.dmg` 与 `SHA256SUMS.txt`；上传后 GitHub 资产大小与 SHA-256 digest 均与本地一致
+- 从无认证的公开下载链接重新下载，DMG 和校验文件均与本地逐字节一致；下载后的签名、公证票据与 Gatekeeper 再次验证通过
+- GitHub `releases/latest` 返回 `v0.1.5`，资产 digest 为 `sha256:ceecae5bb5b14bd41b6ffa8116f477045c87d2074d27b47fa73c937a7561278c`
+
+发布后的说明文档更新位于同一 `codex/m0-probe` 分支，不移动已经发布的版本标签。此前未公证本地测试包单独保留，不替换正式下载资产。
 
 没有安装、启动或操作产品 UI；用户授权发布不等于真实拖放、GUI 或辅助功能验收通过。

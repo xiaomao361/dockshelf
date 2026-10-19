@@ -2,9 +2,9 @@
 
 更新时间：2026-10-19（Asia/Shanghai）
 
-## 最新续接：v0.1.5 发布准备
+## 最新续接：v0.1.5 正式发布完成
 
-用户已明确授权发布正式 Release。正式 App/DMG 已使用已有 `claracore-notary` profile 完成公证、票据附加与 Gatekeeper 检查，发布准备与凭据见 `docs/RELEASE_v0.1.5.md`。正式产物位于 `.build/releases/v0.1.5/`，与早先未公证本地测试包分开保留。
+用户明确授权的正式 Release 已完成：[搁这儿 v0.1.5](https://github.com/xiaomao361/dockshelf/releases/tag/v0.1.5) 为 Latest，标签提交 `b83a0c21d8c0805e26f772a9bdcd4b56b03a8192`。App/DMG 使用已有 `claracore-notary` profile 完成公证、票据附加、Gatekeeper 及公开下载逐字节复验，凭据见 `docs/RELEASE_v0.1.5.md`。正式产物位于 `.build/releases/v0.1.5/`，与早先未公证本地测试包分开保留。
 
 用户要求列计划、优化交互/GUI/动效并更新版本与说明。当前源码已推进至 **0.1.5（2026101901）**。实施计划与本轮验证以 `docs/OPTIMIZATION_2026-10-19.md` 为准，用户版本说明见 `docs/RELEASE_NOTES_v0.1.5.md`。
 
@@ -169,7 +169,7 @@ open -n '.build/DerivedData/Build/Products/Debug/搁这儿.app'
 
 ## 下一步建议
 
-完成 v0.1.5 的 GitHub 发布与公开下载复验后，用户可安装正式公证 DMG，按优化计划检查撤销、自动面板、管理热区、文件辨认、翻动及失败详情。安装和启动由用户操作；开机启动、自动更新与 Mac App Store 不在本轮范围。
+用户可安装正式公证 v0.1.5 DMG，按优化计划检查撤销、自动面板、管理热区、文件辨认、翻动及失败详情，根据真实反馈再修正。安装和启动由用户操作；开机启动、自动更新与 Mac App Store 不在本轮范围。
 
 ## 不要做
 

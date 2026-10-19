@@ -4,7 +4,7 @@
 
 它只保存原位置的引用，不复制、移动、上传或修改文件内容。
 
-当前版本：**0.1.5（2026101901）**。交互与界面改进见 [版本说明](docs/RELEASE_NOTES_v0.1.5.md) 和 [实施计划](docs/OPTIMIZATION_2026-10-19.md)。正式 App/DMG 已完成 Developer ID 签名与 Apple 公证，GitHub 发布准备与验证见 [发布回执](docs/RELEASE_v0.1.5.md)。
+当前正式版本：[**0.1.5（2026101901）**](https://github.com/xiaomao361/dockshelf/releases/tag/v0.1.5)。交互与界面改进见 [版本说明](docs/RELEASE_NOTES_v0.1.5.md) 和 [实施计划](docs/OPTIMIZATION_2026-10-19.md)。App/DMG 已完成 Developer ID 签名、Apple 公证及公开下载复验，凭据见 [发布回执](docs/RELEASE_v0.1.5.md)。
 
 ## 系统要求
 
