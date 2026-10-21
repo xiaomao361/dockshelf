@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="搁这儿使用帮助、文件访问恢复、快捷键和固定记录备份说明。联系支持：zhouwei@linux.com。">
+  <meta name="theme-color" content="#365652">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="支持与帮助 · 搁这儿">
+  <meta property="og:description" content="查看文件拖入、取用、固定与恢复的使用说明，或联系开发者。">
+  <meta property="og:image" content="https://xiaomao361.github.io/dockshelf/assets/app-icon.png">
+  <link rel="canonical" href="https://xiaomao361.github.io/dockshelf/support/">
+  <link rel="icon" href="../assets/app-icon.png">
+  <link rel="stylesheet" href="../assets/site.css">
+  <title>支持与帮助 · 搁这儿</title>
+</head>
+<body>
+  <a class="skip" href="#main">跳到正文</a>
+  <header class="site-header"><nav class="nav shell" aria-label="主导航"><a class="brand" href="../" aria-label="搁这儿首页"><img src="../assets/logo.svg" width="130" height="32" alt="搁这儿"></a><div class="links"><a href="../">产品介绍</a><a href="./" aria-current="page">支持与帮助</a><a href="../privacy/">隐私政策</a></div></nav></header>
+  <main class="shell page-shell" id="main">
+    <header class="page-intro"><h1>支持与帮助</h1><p class="lead">从第一次拖入，到找回常用文件，都可以从这里开始。</p></header>
+    <section class="contact" aria-labelledby="contact-title"><h2 id="contact-title">联系开发者</h2><p><a class="contact-email" href="mailto:zhouwei@linux.com">zhouwei@linux.com</a></p><p>请附上 macOS 版本、应用版本、问题现象和复现步骤。截图请先遮盖私人文件名和路径，不要发送原文件、访问书签或固定记录备份。</p><p>也可通过 <a href="https://github.com/xiaomao361/dockshelf/issues">GitHub Issues</a> 反馈；公开问题页中的信息会被其他人看到。</p></section>
+    <p class="note">适用设备：Apple Silicon Mac，macOS 14 或更高版本。本页对应正在准备的 Mac App Store 版本；早期 GitHub 版本的菜单和功能可能有所不同。</p>
+    <section class="prose" aria-labelledby="start-title"><h2 id="start-title">第一次使用</h2><ol><li>启动后，在 Mac 屏幕顶部的菜单栏找到“搁这儿”图标。应用没有普通主窗口。</li><li>从 Finder 拖入文件或文件夹，放到菜单栏图标或展开的搁板上。</li><li>需要取用时，从卡片图标拖到 Finder 目录、浏览器上传区或其他支持文件拖放的应用。</li><li>点击卡片下方的图钉可固定引用；点击叉号只移除引用，不删除原文件。</li></ol></section>
+    <section class="faq" aria-labelledby="faq-title"><h2 id="faq-title">常见问题</h2>
+      <details><summary>退出后，文件还在搁板里吗？</summary><p>临时项在退出应用时清空。固定项会保留记录，重启后尝试恢复访问。文件移动、外置卷未连接或授权变化时，可能需要恢复访问。</p></details>
+      <details><summary>怎样打开搁板或修改快捷键？</summary><p>点击菜单栏图标，或使用默认快捷键 Control–Option–空格。右键点击菜单栏图标，选择“帮助与关于…”，即可修改快捷键或恢复默认。若提示组合冲突，请换一个组合后重试。</p></details>
+      <details><summary>怎样关闭拖动时自动展开？</summary><p>右键点击菜单栏图标，取消勾选“拖动文件时自动展开”。之后仍可点击菜单栏图标或使用已设置的快捷键打开搁板。</p></details>
+      <details><summary>搁板满了会怎样？</summary><p>搁板最多放入 20 项。满时，新拖入的项目会替换最早加入的未固定项，并提供一次撤销；固定项不会被自动替换。全部固定时，请先移除或取消固定不再需要的引用。</p></details>
+      <details><summary>提示需要重新授权，怎样一次恢复多个项目？</summary><p>打开“固定与访问恢复”提示，选择“选择所在文件夹，批量恢复…”。选中文件原来所在的文件夹后，应用会尝试恢复其中已经记录的项目，不会把整个文件夹的其他内容加入搁板。不同位置的项目可以分批选择所在文件夹。</p></details>
+      <details><summary>文件移动或外置磁盘断开后怎么办？</summary><p>外置磁盘暂不可用时，先重新连接再检查。文件已经移动时，请移除旧引用，再从新位置拖入。应用不会静默跟随书签改用另一个路径，也不会因为一次访问失败删除固定记录。</p></details>
+      <details><summary>怎样备份和恢复固定记录？</summary><p>右键点击菜单栏图标，选择“导出固定记录…”。备份生成后，可在 Finder 中找到文件并自行保管；使用“导入固定记录…”恢复。备份包含固定记录和已有访问书签，不包含原文件内容，也不包含临时项。导入后自动尝试恢复访问，未恢复的部分可按所在文件夹批量授权。</p><p>书签主要用于同一 Mac、同一用户和同一应用恢复，跨机器、用户或应用签名变化后不保证仍可用。备份包含私人路径和授权信息，请勿公开分享。</p></details>
+      <details><summary>移除引用会删除原文件吗？</summary><p>不会。叉号及“移除全部引用”只处理搁板引用。为避免读取失败造成记录丢失，应用会保留本机恢复副本；移除当前引用不等于抹除全部历史副本。需要清理这些副本时，请先阅读隐私政策或联系支持。</p></details>
+      <details><summary>拖到其他应用后，文件会被上传吗？</summary><p>放入搁板不会上传原文件。拖给浏览器或其他应用后，目标应用会根据你的操作处理文件，可能复制、上传或发送文件；该阶段适用目标应用的隐私政策。</p></details>
+      <details><summary>需要账号或网络连接吗？</summary><p>应用无需注册账号，搁板记录和偏好保存在本机，不包含遥测、广告跟踪、后台网络请求或云同步。主动打开 GitHub 反馈页面、发送邮件，或把文件拖给其他应用时，由对应外部服务处理。</p></details>
+    </section>
+  </main>
+  <footer class="site-footer shell"><p>© 2026 Zhou Wei · 搁这儿</p><div><a href="../">产品介绍</a><a href="../privacy/">隐私政策</a><a href="mailto:zhouwei@linux.com">联系开发者</a></div></footer>
+</body>
+</html>
