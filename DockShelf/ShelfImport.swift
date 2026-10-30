@@ -42,6 +42,7 @@ enum ShelfImport {
 /// The whole hosting view receives native file drops without an overlay over SwiftUI controls.
 @MainActor
 final class ShelfHostingView: NSHostingView<ShelfView> {
+    override var isOpaque: Bool { false }
     private let store: ShelfStore
     private let interaction: ShelfInteractionState
 
@@ -49,6 +50,10 @@ final class ShelfHostingView: NSHostingView<ShelfView> {
         self.store = store
         self.interaction = interaction
         super.init(rootView: ShelfView(store: store, interaction: interaction))
+        // WindowServer ignores fully transparent pixels for native drag targeting.
+        // A 1% input floor is visually transparent but keeps the entire shelf reachable.
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
         registerForDraggedTypes([.fileURL, .string, ShelfImport.sourceType])
     }
 
@@ -57,6 +62,12 @@ final class ShelfHostingView: NSHostingView<ShelfView> {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("Use init(store:interaction:)") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard bounds.contains(convert(point, from: superview)) else { return nil }
+        // Keep controls/scrolling intact; empty pixels belong to the same destination.
+        return super.hitTest(point) ?? self
+    }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         if ShelfImport.isShelfDrag(sender.draggingPasteboard) {
@@ -90,10 +101,11 @@ final class ShelfHostingView: NSHostingView<ShelfView> {
             return false
         }
         let batch = ShelfImport.read(sender.draggingPasteboard)
-        let result = store.add(batch.urls, failedCount: batch.failedCount, issues: batch.issues)
-        // Counts only: no private paths, names or file content in diagnostics.
-        NSLog("Shelf native drop: urls=%ld unreadable=%ld accepted=%@", batch.urls.count, batch.failedCount, result.accepted ? "true" : "false")
-        interaction.finishDrop(result: result)
-        return result.accepted
+        interaction.beginProcessing()
+        store.enqueueImport(batch.urls, failedCount: batch.failedCount, issues: batch.issues) { [weak interaction] result in
+            interaction?.finishQueuedDrop(result: result)
+        }
+        return true // Queued only; the completion reports actual added/failed counts.
+
     }
 }

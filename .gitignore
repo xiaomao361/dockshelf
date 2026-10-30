@@ -14,6 +14,9 @@ xcuserdata/
 .swiftpm/
 Package.resolved
 
+# Historical local prototypes and generated caches
+/archive/
+
 # Editors
 .idea/
 .vscode/

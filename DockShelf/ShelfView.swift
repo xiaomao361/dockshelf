@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
+import QuickLookThumbnailing
 
 private struct FeedbackContent {
     let title: String
@@ -11,23 +11,39 @@ private struct FeedbackContent {
     var canDismiss = false
 }
 
-private extension UTType {
-    static let dockShelfItem = UTType(exportedAs: "com.claracore.dockshelf.shelf-item")
-}
-
 struct ShelfView: View {
     @ObservedObject var store: ShelfStore
     @ObservedObject var interaction: ShelfInteractionState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var refreshDate = Date()
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var showsRecovery = false
+    @State private var showsRestoreConfirmation = false
     @State private var showsClearAllConfirmation = false
     @State private var inspectedItemID: String?
     @State private var scrollItemID: String?
+    @State private var shelfUnfolded = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            FoldingShelfMaterial(unfolded: shelfUnfolded, reduceMotion: reduceMotion, receiving: interaction.phase == .receivingValid)
+                .padding(.horizontal, 12)
+                .frame(height: 22)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.top, 92)
+
+            if interaction.phase == .receivingValid {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(LinearGradient(colors: [DockShelfTheme.accent.opacity(0.025), DockShelfTheme.accent.opacity(0.12)], startPoint: .top, endPoint: .bottom))
+                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(DockShelfTheme.accent.opacity(0.32), style: StrokeStyle(lineWidth: 1, dash: [4, 4])) }
+                    .frame(height: 110)
+                    .padding(.horizontal, 12)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 10)
+                    .allowsHitTesting(false)
+            }
+
             shelfContent
-                .opacity(showsDropPrompt ? 0.08 : 1)
+                .opacity(showsDropPrompt ? 0.45 : 1)
 
             if showsDropPrompt {
                 dropPrompt
@@ -37,39 +53,34 @@ struct ShelfView: View {
                     .transition(feedbackTransition)
             }
 
-            if !store.items.isEmpty {
-                countPill
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(.horizontal, 8)
-                    .padding(.top, 4)
+            if transientFeedback == nil && !showsDropPrompt,
+               let item = store.items.first(where: { $0.id == inspectedItemID }) {
+                ShelfHoverName(name: item.displayName)
+                    .padding(.bottom, 8)
                     .transition(.opacity)
             }
 
-            // Feedback owns the footer; keep the inspected file identifiable in the header.
-            if transientFeedback != nil && !showsDropPrompt,
-               let item = store.items.first(where: { $0.id == inspectedItemID }) {
-                Text(item.displayName)
-                    .font(.caption2.weight(.medium))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.leading, 16)
-                    .padding(.trailing, 72)
-                    .padding(.top, 5)
-                    .allowsHitTesting(false)
+            if store.persistenceProblem != nil || store.accessWarning != nil || store.items.contains(where: { $0.access?.state != .ready }) {
+                Button {
+                    showsRecovery = true
+                } label: {
+                    Label(recoveryLabel, systemImage: "exclamationmark.circle")
+                        .font(.caption2)
+                }
+                .buttonStyle(.borderless)
+                .padding(.leading, 12)
+                .padding(.top, 3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .popover(isPresented: $showsRecovery) { recoveryDetails }
             }
+
+
         }
         .frame(width: DockShelfMetrics.panelSize.width, height: DockShelfMetrics.panelSize.height)
-        .background {
-            NativePopoverMaterial()
-        }
-        .clipShape(RoundedRectangle(cornerRadius: DockShelfMetrics.panelRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: DockShelfMetrics.panelRadius, style: .continuous)
-                .strokeBorder(panelBorder, lineWidth: interaction.phase == .idle ? 1 : 1.5)
-        }
         .contentShape(RoundedRectangle(cornerRadius: DockShelfMetrics.panelRadius, style: .continuous))
         .contextMenu {
+            Button("帮助与关于…") { interaction.helpRequested?() }
+            Divider()
             Button("移除全部临时引用") {
                 store.clearTemporaryItems()
             }
@@ -78,7 +89,7 @@ struct ShelfView: View {
             Button("移除全部引用…", role: .destructive) {
                 showsClearAllConfirmation = true
             }
-            .disabled(store.items.isEmpty)
+            .disabled(store.items.isEmpty || !store.canModifyPinnedReferences)
         }
         .confirmationDialog(
             "移除全部引用？",
@@ -93,14 +104,11 @@ struct ShelfView: View {
             Text("固定和临时引用都会从搁板移除，但不会删除原文件。")
         }
         .onHover { interaction.panelHoverChanged?($0) }
-        .task(id: interaction.isPanelVisible) {
-            guard interaction.isPanelVisible else { return }
-            refreshDate = Date()
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(2)) }
-                catch { return }
-                refreshDate = Date()
-            }
+        .onAppear { updateShelfFold(interaction.isPanelVisible) }
+        .onChange(of: interaction.isPanelVisible) { _, visible in updateShelfFold(visible) }
+        .onChange(of: showsRecovery) { _, visible in interaction.isShowingRecovery = visible }
+        .onChange(of: interaction.isPanelVisible) { _, visible in
+            if !visible { showsRecovery = false }
         }
         .onChange(of: store.canUndoReplacement) { _, canUndo in
             if !canUndo, case .replaced = interaction.phase {
@@ -113,9 +121,14 @@ struct ShelfView: View {
         .onChange(of: interaction.phase) { _, _ in
             announceFeedback()
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.10), value: inspectedItemID)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: interaction.phase)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: store.items.map(\.id))
+        .animation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.88), value: store.items.map(\.id))
         .accessibilityIdentifier("shelf-panel")
+    }
+
+    private func updateShelfFold(_ visible: Bool) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: visible ? ShelfMotion.unfold : ShelfMotion.fold)) { shelfUnfolded = visible }
     }
 
     @ViewBuilder
@@ -124,99 +137,67 @@ struct ShelfView: View {
             emptyState
         } else {
             ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: true) {
-                    LazyHStack(spacing: DockShelfMetrics.itemSpacing) {
-                        ForEach(store.items) { item in
-                            ShelfItemTile(
-                                item: item,
-                                refreshDate: refreshDate,
-                                interaction: interaction,
-                                inspect: { isInspecting in
-                                    if isInspecting { inspectedItemID = item.id }
-                                    else if inspectedItemID == item.id { inspectedItemID = nil }
-                                },
-                                togglePinned: { store.togglePinned(item) },
-                                remove: { store.remove(item) }
-                            )
-                            .id(item.id)
-                            .transition(reduceMotion ? .opacity : .asymmetric(
-                                insertion: .opacity.combined(with: .offset(y: -4)),
-                                removal: .opacity
-                            ))
+                VStack(spacing: 0) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(alignment: .top, spacing: DockShelfMetrics.itemSpacing) {
+                            ForEach(store.items) { item in
+                                ShelfItemTile(
+                                    item: item,
+                                    canModifyPinnedReferences: store.canModifyPinnedReferences,
+                                    interaction: interaction,
+                                    inspect: { isInspecting in
+                                        if isInspecting { inspectedItemID = item.id }
+                                        else if inspectedItemID == item.id { inspectedItemID = nil }
+                                    },
+                                    togglePinned: { store.togglePinned(item) },
+                                    remove: { store.remove(item) }
+                                )
+                                .id(item.id)
+                                .transition(reduceMotion ? .opacity : .asymmetric(
+                                    insertion: .opacity.combined(with: .offset(y: -18)),
+                                    removal: .opacity
+                                ))
+                            }
+                        }
+                        .scrollTargetLayout()
+                        .padding(.horizontal, DockShelfMetrics.horizontalPadding)
+                        .frame(minWidth: DockShelfMetrics.panelSize.width, alignment: store.items.count <= 5 ? .center : .leading)
+                        .padding(.top, DockShelfMetrics.tileTop)
+                        .padding(.bottom, 4)
+                    }
+                    .frame(height: DockShelfMetrics.contentHeight)
+                    .scrollPosition(id: $scrollItemID, anchor: .leading)
+                    .background(HorizontalScrollWheelBridge())
+                    .onAppear {
+                        if let newestID = store.items.last?.id {
+                            proxy.scrollTo(newestID, anchor: .trailing)
                         }
                     }
-                    .scrollTargetLayout()
-                    .padding(.horizontal, DockShelfMetrics.horizontalPadding)
-                    .padding(.top, 24)
-                    .padding(.bottom, 38)
-                }
-                .scrollPosition(id: $scrollItemID, anchor: .leading)
-                .background(HorizontalScrollWheelBridge())
-                .onAppear {
-                    if let newestID = store.items.last?.id {
-                        proxy.scrollTo(newestID, anchor: .trailing)
+                    .onChange(of: store.items.map(\.id)) { oldIDs, newIDs in
+                        guard let newestID = newIDs.last, !oldIDs.contains(newestID) else { return }
+                        // Wait for the newly appended tile to enter the scroll layout.
+                        DispatchQueue.main.async { proxy.scrollTo(newestID, anchor: .trailing) }
                     }
-                }
-                .onChange(of: store.items.map(\.id)) { oldIDs, newIDs in
-                    guard let newestID = newIDs.last, !oldIDs.contains(newestID) else { return }
-                    // Wait for the newly appended tile to enter the scroll layout.
-                    DispatchQueue.main.async { proxy.scrollTo(newestID, anchor: .trailing) }
-                }
-                .overlay(alignment: .bottom) {
-                    if transientFeedback == nil && !showsDropPrompt {
-                        shelfFooter(proxy: proxy)
+                    HStack {
+                        if store.items.count > 5 && transientFeedback == nil && !showsDropPrompt {
+                            pageButton("向左翻动", symbol: "chevron.left") { scrollPage(-1, proxy: proxy) }
+                            Spacer(minLength: 0)
+                            pageButton("向右翻动", symbol: "chevron.right") { scrollPage(1, proxy: proxy) }
+                        }
                     }
+                    .padding(.horizontal, 12)
+                    .frame(height: DockShelfMetrics.footerHeight)
                 }
+
             }
         }
-    }
-
-    private func shelfFooter(proxy: ScrollViewProxy) -> some View {
-        HStack(spacing: 6) {
-            if store.items.count > 5 {
-                pageButton("向左翻动", symbol: "chevron.left") { scrollPage(-1, proxy: proxy) }
-            }
-
-            Group {
-                if let item = store.items.first(where: { $0.id == inspectedItemID }) {
-                    VStack(spacing: 1) {
-                        Text(item.displayName)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.primary)
-                        Text(item.url.deletingLastPathComponent().path)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(item.url.path)
-                    .accessibilityElement(children: .combine)
-                } else if store.items.count > 5 {
-                    Text("左右翻动或滚动查看更多")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("拖到需要的位置 · 固定后重启仍保留")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity)
-
-            if store.items.count > 5 {
-                pageButton("向右翻动", symbol: "chevron.right") { scrollPage(1, proxy: proxy) }
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 36)
-        .padding(.bottom, 1)
     }
 
     private func pageButton(_ label: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.caption.weight(.semibold))
-                .frame(width: 28, height: 28)
+                .frame(width: DockShelfMetrics.footerButtonSize, height: DockShelfMetrics.footerButtonSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -235,59 +216,26 @@ struct ShelfView: View {
     }
 
     private var emptyState: some View {
-        HStack(spacing: 15) {
-            Image(systemName: "arrow.down.doc")
-                .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(emptyStateColor)
-                .frame(width: 46, height: 46)
-                .background(emptyStateColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(emptyStateTitle)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(interaction.phase == .receivingInvalid ? DockShelfTheme.invalid : Color.primary)
-                Text(emptyStateSubtitle)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(.horizontal, 28)
-        .padding(.bottom, 14)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var countPill: some View {
-        Text("\(store.items.count)/\(ShelfStore.maximumItemCount)")
-            .font(.caption2.weight(.medium))
+        Image(systemName: "arrow.down")
+            .font(.system(size: 18, weight: .light))
             .foregroundStyle(.secondary)
-            .monospacedDigit()
-            .padding(.horizontal, 8)
-            .frame(height: 16)
-            .background(.regularMaterial, in: Capsule(style: .continuous))
-            .accessibilityLabel("搁板中有 \(store.items.count) 个项目，最多 \(ShelfStore.maximumItemCount) 个")
+            .frame(width: 38, height: 38)
+            .background(.regularMaterial, in: Circle())
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.top, 44)
+            .help(emptyStateSubtitle)
+            .accessibilityLabel(emptyStateTitle)
     }
 
     private var dropPrompt: some View {
-        HStack(spacing: 15) {
-            Image(systemName: dropPromptSymbol)
-                .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(dropPromptColor)
-                .frame(width: 46, height: 46)
-                .background(dropPromptColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(dropPromptTitle)
-                    .font(.system(size: 16, weight: .semibold))
-                Text(dropPromptSubtitle)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(.horizontal, 28)
-        .padding(.bottom, 14)
+        Label(dropPromptTitle, systemImage: dropPromptSymbol)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(dropPromptColor)
+            .padding(.horizontal, 13).padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.top, 45)
+            .accessibilityHint(dropPromptSubtitle)
     }
 
     private func feedbackBanner(_ feedback: FeedbackContent) -> some View {
@@ -356,6 +304,71 @@ struct ShelfView: View {
             .accessibilityElement(children: .contain)
     }
 
+    private var recoveryLabel: String {
+        if store.persistenceProblem == .saveFailed { return "固定更改未保存" }
+        if store.persistenceProblem != nil { return "固定记录需恢复" }
+        if store.accessWarning != nil { return "未能固定" }
+        return "需要重新授权"
+    }
+
+    private var recoveryDetails: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("固定与访问恢复").font(.headline)
+            if let problem = store.persistenceProblem {
+                Text(problem.message).font(.callout)
+                Button(problem == .saveFailed ? "重试保存或读取" : "重试读取") { store.retryPersistence() }
+                if store.canRestoreBackup {
+                    Button("恢复上一次备份…") { showsRestoreConfirmation = true }
+                        .confirmationDialog("恢复上一次固定记录？", isPresented: $showsRestoreConfirmation) {
+                            Button("恢复备份") { store.restorePinnedBackup() }
+                            Button("取消", role: .cancel) {}
+                        } message: {
+                            Text("当前无法读取的记录会保留副本。备份之后的固定更改可能不在备份中。")
+                        }
+                }
+            }
+            if let warning = store.accessWarning {
+                Text(warning).font(.callout)
+                Button("知道了") { store.dismissAccessWarning() }
+            }
+            if store.items.contains(where: { $0.access?.state != .ready }) {
+                Text("备份中的部分访问权限未恢复。选择所在文件夹，即可一起恢复其中记录的项目，无需逐个选文件。")
+                    .font(.caption)
+                Button("选择所在文件夹，批量恢复…") {
+                    requestReauthorization(store.items.filter { $0.access?.state != .ready }.map(\.id), usingFolders: true)
+                }
+                .disabled(store.pendingImportCount > 0 || !store.canModifyPinnedReferences)
+                .accessibilityHint("选择一个或多个所在文件夹，只恢复已记录的项目")
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(store.items.filter { $0.access?.state != .ready }) { item in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.displayName).font(.callout.weight(.medium))
+                            Text(item.access?.state.message ?? "请在恢复提示中选择所在文件夹授权").font(.caption)
+                            Text(item.url.path).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
+                            HStack {
+                                Button("单独选择文件…") { requestReauthorization([item.id]) }
+                                    .disabled(store.pendingImportCount > 0 || !store.canModifyPinnedReferences)
+                                    .accessibilityLabel("为\(item.displayName)选择原文件授权")
+                                Button("移除引用") { store.remove(item) }
+                            }
+                        }.accessibilityElement(children: .contain)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.frame(maxHeight: 190)
+            Text("固定记录和原文件不会因读取失败而清空。授权后保留原顺序、加入时间与固定状态。")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("关闭") { showsRecovery = false }.keyboardShortcut(.cancelAction)
+        }.padding(16).frame(width: 330)
+    }
+
+    private func requestReauthorization(_ ids: [String], usingFolders: Bool = false) {
+        showsRecovery = false
+        if usingFolders { interaction.folderReauthorizationRequested?(ids) }
+        else { interaction.reauthorizationRequested?(ids) }
+    }
+
     private var showsDropPrompt: Bool {
         interaction.phase == .receivingValid
             || interaction.phase == .receivingInvalid
@@ -372,8 +385,12 @@ struct ShelfView: View {
 
     private var transientFeedback: FeedbackContent? {
         switch interaction.phase {
+        case .processing:
+            FeedbackContent(title: "正在检查文件引用…", subtitle: "外置卷或云盘暂不可用时可能需要等待", symbol: "hourglass", color: .secondary)
+        case let .reauthorized(count):
+            FeedbackContent(title: "已重新授权 \(count) 项", symbol: "checkmark", color: DockShelfTheme.accent, canDismiss: true)
         case .success:
-            FeedbackContent(title: "已搁好 \(interaction.lastAddedCount) 项", symbol: "checkmark", color: DockShelfTheme.accent)
+            nil
         case .invalid:
             FeedbackContent(
                 title: "未能加入项目",
@@ -396,6 +413,7 @@ struct ShelfView: View {
                 subtitle: [
                     duplicates > 0 ? "\(duplicates) 项重复" : nil,
                     failed > 0 ? "\(failed) 项无法读取" : nil
+                    , store.lastReauthorizedCount > 0 ? "\(store.lastReauthorizedCount) 项重新授权" : nil
                 ].compactMap { $0 }.joined(separator: " · "),
                 symbol: "exclamationmark.circle",
                 color: DockShelfTheme.warning,
@@ -404,7 +422,7 @@ struct ShelfView: View {
             )
         case .duplicate:
             FeedbackContent(
-                title: "项目已经在搁板里",
+                title: store.lastReauthorizedCount > 0 ? "已重新授权 \(store.lastReauthorizedCount) 项，其余项目已存在" : "项目已经在搁板里",
                 symbol: "doc.on.doc",
                 color: DockShelfTheme.warning,
                 canDismiss: true
@@ -431,7 +449,7 @@ struct ShelfView: View {
                 color: DockShelfTheme.accent
             )
         case .exporting:
-            FeedbackContent(title: "拖到需要的位置", symbol: "arrow.up.forward", color: .secondary)
+            nil
         default:
             nil
         }
@@ -447,9 +465,13 @@ struct ShelfView: View {
     }
 
     private func announceFeedback() {
-        guard interaction.isPanelVisible, let feedback = transientFeedback,
-              interaction.phase != .exporting else { return }
-        let message = [feedback.title, feedback.subtitle].compactMap { $0 }.joined(separator: "，")
+        guard interaction.isPanelVisible else { return }
+        let message: String
+        if interaction.phase == .success {
+            message = "已搁好 \(interaction.lastAddedCount) 项"
+        } else if let feedback = transientFeedback, interaction.phase != .exporting {
+            message = [feedback.title, feedback.subtitle].compactMap { $0 }.joined(separator: "，")
+        } else { return }
         NSAccessibility.post(
             element: NSApp as Any,
             notification: .announcementRequested,
@@ -459,9 +481,9 @@ struct ShelfView: View {
 
     private var panelBorder: Color {
         switch interaction.phase {
-        case .idle, .exporting:
+        case .idle, .processing, .exporting:
             DockShelfTheme.border
-        case .receivingValid, .success, .restored:
+        case .receivingValid, .success, .reauthorized, .restored:
             DockShelfTheme.accent
         case .receivingInvalid, .invalid:
             DockShelfTheme.invalid
@@ -472,9 +494,9 @@ struct ShelfView: View {
 
     private var emptyStateColor: Color {
         switch interaction.phase {
-        case .idle, .partial, .returningShelfItem, .exporting, .duplicate, .tooMany, .insufficientReplaceable:
+        case .idle, .processing, .partial, .returningShelfItem, .exporting, .duplicate, .tooMany, .insufficientReplaceable:
             .secondary
-        case .receivingValid, .success, .replaced, .restored:
+        case .receivingValid, .success, .reauthorized, .replaced, .restored:
             DockShelfTheme.accent
         case .receivingInvalid, .invalid:
             DockShelfTheme.invalid
@@ -503,7 +525,7 @@ struct ShelfView: View {
         case .returningShelfItem:
             "项目已经在搁板里"
         default:
-            "松手放到搁板"
+            "整块区域均可放入"
         }
     }
 
@@ -525,11 +547,14 @@ struct ShelfView: View {
     }
 
     private var emptyStateTitle: String {
-        interaction.phase == .success ? "已搁好" : "把文件或文件夹先搁这儿"
+        if store.persistenceProblem == .saveFailed { return "固定更改尚未保存" }
+        if store.persistenceProblem != nil { return "固定记录暂时无法读取" }
+        return interaction.phase == .success ? "已搁好" : "把文件或文件夹先搁这儿"
     }
 
     private var emptyStateSubtitle: String {
-        interaction.phase == .success ? "需要时再拖出去" : "原文件不会移动，需要时再拖出去"
+        if store.persistenceProblem != nil { return "原记录已保留 · 点左上角提示处理\n临时引用仍可拖入使用" }
+        return interaction.phase == .success ? "需要时再拖出去" : "拖入后需要时再拖出 · 点图钉固定\n临时项退出即清空，原文件不会移动"
     }
 }
 
@@ -570,26 +595,6 @@ private struct ShelfImportIssuesView: View {
         .padding(16)
         .frame(width: 320)
     }
-}
-
-private struct NativePopoverMaterial: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        if #available(macOS 26.0, *) {
-            let view = NSGlassEffectView()
-            view.style = .regular
-            view.cornerRadius = DockShelfMetrics.panelRadius
-            return view
-        }
-
-        let view = NSVisualEffectView()
-        view.material = .popover
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.isEmphasized = false
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 private struct HorizontalScrollWheelBridge: NSViewRepresentable {
@@ -729,55 +734,33 @@ private struct ShelfItemTile: View {
     }
 
     let item: ShelfItem
-    let refreshDate: Date
+    let canModifyPinnedReferences: Bool
     @ObservedObject var interaction: ShelfInteractionState
     let inspect: (Bool) -> Void
     let togglePinned: () -> Void
     let remove: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
-    @State private var fileExists = true
+    @State private var fileExists = false
+    @State private var hasCheckedAvailability = false
+    @State private var availabilityMessage: String? = "正在检查原位置"
     @State private var fileIcon: NSImage?
+    @State private var previewImage: NSImage?
+    @State private var isDirectory = false
+    @State private var isDragging = false
+    @State private var hasLanded = false
     @FocusState private var focusTarget: FocusTarget?
 
     var body: some View {
         let exists = fileExists
         let showsControls = isHovered || focusTarget != nil
         let isEmphasized = isHovered || focusTarget != nil
-        let tile = VStack(spacing: 5) {
-            Image(nsImage: fileIcon ?? NSImage())
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: DockShelfMetrics.iconSize, height: DockShelfMetrics.iconSize)
-                .opacity(exists ? 1 : 0.42)
-                .accessibilityHidden(true)
-
-            Text(item.displayName)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(exists ? .primary : .secondary)
-                .lineLimit(2)
-                .truncationMode(.middle)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, minHeight: 24, alignment: .top)
-                .opacity(showsControls ? 0 : 1)
-                .accessibilityHidden(showsControls)
+        let tile = VStack(spacing: 0) {
+            draggableFileIcon
+                .frame(height: 78, alignment: .bottom)
         }
         .padding(.horizontal, 4)
-        .padding(.top, 8)
         .frame(width: DockShelfMetrics.itemWidth, height: DockShelfMetrics.itemHeight, alignment: .top)
-        .background(
-            DockShelfTheme.itemBackground.opacity(isEmphasized ? 0.86 : 0.64),
-            in: RoundedRectangle(cornerRadius: DockShelfMetrics.itemRadius, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: DockShelfMetrics.itemRadius, style: .continuous)
-                .strokeBorder(
-                    exists
-                        ? (isEmphasized ? DockShelfTheme.accent.opacity(0.68) : DockShelfTheme.border)
-                        : DockShelfTheme.invalid,
-                    lineWidth: isEmphasized ? 1.5 : 1
-                )
-        }
         .overlay(alignment: .bottom) {
             HStack(spacing: 4) {
                 Button(action: togglePinned) {
@@ -790,6 +773,7 @@ private struct ShelfItemTile: View {
                 .help(item.isPinned ? "取消固定" : "固定并在重启后保留")
                 .accessibilityLabel(item.isPinned ? "取消固定 \(item.displayName)" : "固定 \(item.displayName)")
                 .focused($focusTarget, equals: .pin)
+                .disabled(!canModifyPinnedReferences)
 
                 Button(action: remove) {
                     Image(systemName: "xmark")
@@ -801,6 +785,7 @@ private struct ShelfItemTile: View {
                 .help("移除引用")
                 .accessibilityLabel("移除 \(item.displayName)")
                 .focused($focusTarget, equals: .remove)
+                .disabled(item.isPinned && !canModifyPinnedReferences)
             }
             .buttonStyle(.plain)
             .symbolRenderingMode(.hierarchical)
@@ -819,7 +804,7 @@ private struct ShelfItemTile: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if !exists {
+            if !exists && hasCheckedAvailability {
                 Circle()
                     .fill(DockShelfTheme.invalid)
                     .frame(width: 9, height: 9)
@@ -827,10 +812,16 @@ private struct ShelfItemTile: View {
                     .accessibilityHidden(true)
             }
         }
-        .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
-        .help(exists ? item.url.path : "原文件已移动、删除或暂不可访问\n\(item.url.path)")
+        .offset(y: hasLanded || reduceMotion ? 0 : -16)
+        .opacity(hasLanded || reduceMotion ? 1 : 0)
+        .task(id: interaction.isPanelVisible) {
+            guard interaction.isPanelVisible else { isDragging = false; return }
+            withAnimation(reduceMotion ? nil : .spring(response: ShelfMotion.settle, dampingFraction: 0.92)) { hasLanded = true }
+        }
+        .help(itemHelp)
         .contentShape(RoundedRectangle(cornerRadius: DockShelfMetrics.itemRadius, style: .continuous))
         .focusable()
+        .focusEffectDisabled()
         .focused($focusTarget, equals: .tile)
         .contextMenu {
             Button("在 Finder 中显示") {
@@ -840,16 +831,21 @@ private struct ShelfItemTile: View {
             Divider()
             Button(item.isPinned ? "取消固定" : "固定") {
                 togglePinned()
-            }
+            }.disabled(!canModifyPinnedReferences)
             Button("移除引用", role: .destructive) {
                 remove()
-            }
+            }.disabled(item.isPinned && !canModifyPinnedReferences)
         }
-        .onAppear { refreshFileMetadata() }
-        .onChange(of: refreshDate) { _, _ in refreshFileMetadata() }
+        .task(id: refreshIdentity) { await refreshMetadataWhileVisible() }
         .onHover { isHovered = $0 }
-        .onChange(of: isHovered) { _, _ in inspect(isHovered || focusTarget != nil) }
-        .onChange(of: focusTarget) { _, _ in inspect(isHovered || focusTarget != nil) }
+        .task(id: inspectionIdentity) {
+            guard interaction.isPanelVisible, !isDragging, isHovered || focusTarget != nil else {
+                inspect(false); return
+            }
+            guard await ShelfHoverTiming.ready(keyboardFocused: focusTarget != nil),
+                  !Task.isCancelled else { return }
+            inspect(true)
+        }
         .onDisappear { inspect(false) }
         .animation(
             reduceMotion
@@ -863,7 +859,7 @@ private struct ShelfItemTile: View {
         .accessibilityHint(
             exists
                 ? "按住并拖动到其他窗口"
-                : "原文件已移动、删除或暂不可访问"
+                : availabilityMessage ?? "请在恢复提示中选择所在文件夹授权"
         )
         .accessibilityAction(named: item.isPinned ? "取消固定" : "固定") {
             togglePinned()
@@ -872,30 +868,140 @@ private struct ShelfItemTile: View {
             remove()
         }
 
-        if exists {
-            tile.onDrag {
-                interaction.beginExport()
-                let provider = NSItemProvider(contentsOf: item.url)
-                    ?? NSItemProvider(object: item.url as NSURL)
-                provider.registerDataRepresentation(
-                    forTypeIdentifier: UTType.dockShelfItem.identifier,
-                    visibility: .ownProcess
-                ) { completion in
-                    completion(Data(item.id.utf8), nil)
-                    return nil
+        tile
+    }
+
+    private var artworkKind: ShelfArtworkKind { ShelfArtworkKind(url: item.url, isDirectory: isDirectory) }
+
+    @MainActor private var dragImage: NSImage {
+        let renderer = ImageRenderer(content: ShelfFileArtwork(kind: artworkKind, preview: previewImage).frame(width: 64, height: 78))
+        renderer.scale = 2
+        return renderer.nsImage ?? fileIcon ?? NSImage()
+    }
+
+    private var draggableFileIcon: some View {
+        ShelfFileObject(kind: artworkKind, preview: previewImage,
+            lifted: isHovered && !reduceMotion,
+            opacity: fileExists || !hasCheckedAvailability ? (isDragging ? 0.16 : 1) : 0.42,
+            dragging: isDragging,
+            hitLayer: Group {
+                if fileExists {
+                    ShelfNativeFileDrag(item: item, image: dragImage,
+                        began: { isDragging = true; interaction.beginExport() },
+                        ended: { accepted in
+                            withAnimation(reduceMotion ? nil : .smooth(duration: 0.18)) { isDragging = false }
+                            interaction.exportEnded?(accepted)
+                        })
                 }
-                return provider
+            })
+            .accessibilityLabel("拖动 \(item.displayName)")
+    }
+
+    private var inspectionIdentity: String {
+        "\(interaction.isPanelVisible)-\(isHovered)-\(focusTarget != nil)-\(isDragging)"
+    }
+
+    private var refreshIdentity: String {
+        let identity = item.access.map { String(describing: ObjectIdentifier($0)) } ?? "none"
+        return "\(identity)-\(interaction.isPanelVisible)"
+    }
+
+    private var itemHelp: String {
+        fileExists ? item.url.path : "\(availabilityMessage ?? "请在恢复提示中选择所在文件夹授权")\n\(item.url.path)"
+    }
+
+    @MainActor
+    private func refreshMetadataWhileVisible() async {
+        guard interaction.isPanelVisible else { return }
+        while !Task.isCancelled {
+            let access = item.access
+            let url = item.url
+            let previousIcon = fileIcon
+            let previousExists = fileExists
+            let canRead = access?.canReadCurrentSession == true
+            let accessMessage = access?.state.message
+            let metadata = await Task.detached(priority: .utility) { () -> ShelfTileMetadata in
+                _ = access // Retain the scope; mutable access state is read only on the UI actor.
+                let status = canRead ? ShelfFileAvailability.inspect(access?.url ?? url) : .accessDenied
+                let icon = status == .available && (previousIcon == nil || !previousExists)
+                    ? NSWorkspace.shared.icon(forFile: (access?.url ?? url).path) : previousIcon
+                return ShelfTileMetadata(status: status, icon: icon, isDirectory: (try? (access?.url ?? url).resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true)
+            }.value
+            guard !Task.isCancelled else { return }
+            hasCheckedAvailability = true
+            fileExists = metadata.status == .available
+            isDirectory = metadata.isDirectory
+            availabilityMessage = accessMessage ?? metadata.status.message
+            if let icon = metadata.icon { fileIcon = icon }
+            if fileExists && artworkKind.supportsPreview && (previousIcon == nil || !previousExists) {
+                // Publish availability first: a slow preview must not block dragging.
+                let request = QLThumbnailGenerator.Request(fileAt: access?.url ?? url,
+                    size: CGSize(width: 112, height: 112), scale: 2, representationTypes: .all)
+                let preview: NSImage? = await withCheckedContinuation { continuation in
+                    QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
+                        continuation.resume(returning: representation?.nsImage)
+                    }
+                }
+                guard !Task.isCancelled else { return }
+                // Unsupported previews keep the file icon and the real availability result.
+                if let preview { previewImage = preview }
             }
-        } else {
-            tile
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
         }
     }
 
-    private func refreshFileMetadata() {
-        let exists = item.exists
-        if fileIcon == nil || exists != fileExists {
-            fileIcon = NSWorkspace.shared.icon(forFile: item.url.path)
+}
+
+private struct ShelfTileMetadata: @unchecked Sendable {
+    let status: ShelfFileAvailability
+    let icon: NSImage?
+    let isDirectory: Bool
+}
+
+
+/// AppKit owns pointer tracking and cancelled-drag snapback; the source retains only a reference.
+private struct ShelfNativeFileDrag: NSViewRepresentable {
+    let item: ShelfItem
+    let image: NSImage
+    let began: () -> Void
+    let ended: (Bool) -> Void
+
+    func makeNSView(context: Context) -> FileDragView { FileDragView() }
+    func updateNSView(_ view: FileDragView, context: Context) {
+        view.item = item; view.image = image; view.began = began; view.ended = ended
+    }
+
+    final class FileDragView: NSView, NSDraggingSource {
+        var item: ShelfItem?
+        var image = NSImage()
+        var began: (() -> Void)?
+        var ended: ((Bool) -> Void)?
+        private var downEvent: NSEvent?
+        private var retainedAccess: ShelfFileAccess?
+
+        override func mouseDown(with event: NSEvent) { downEvent = event }
+        override func mouseUp(with event: NSEvent) { downEvent = nil }
+        override func mouseDragged(with event: NSEvent) {
+            guard let downEvent, let item,
+                  hypot(event.locationInWindow.x - downEvent.locationInWindow.x,
+                        event.locationInWindow.y - downEvent.locationInWindow.y) > 4 else { return }
+            self.downEvent = nil
+            retainedAccess = item.access
+            let writer = NSPasteboardItem()
+            writer.setString((item.access?.url ?? item.url).absoluteString, forType: .fileURL)
+            writer.setString(item.id, forType: ShelfImport.sourceType)
+            let draggingItem = NSDraggingItem(pasteboardWriter: writer)
+            draggingItem.setDraggingFrame(NSRect(x: 0, y: 0, width: 64, height: 78), contents: image)
+            let session = beginDraggingSession(with: [draggingItem], event: event, source: self)
+            session.animatesToStartingPositionsOnCancelOrFail = true
+            session.draggingFormation = .none
+            began?()
         }
-        fileExists = exists
+        func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
+        func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+            retainedAccess = nil
+            ended?(!operation.isEmpty)
+        }
+        func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
     }
 }

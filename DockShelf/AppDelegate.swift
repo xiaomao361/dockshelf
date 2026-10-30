@@ -8,7 +8,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         statusBarController = StatusBarController()
 #if DEBUG
-        NSLog("DockShelf launched with arguments: %@", CommandLine.arguments.description)
+        NSLog("DockShelf launched")
 #endif
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        statusBarController?.canTerminate() == false ? .terminateCancel : .terminateNow
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        statusBarController?.stop()
     }
 }

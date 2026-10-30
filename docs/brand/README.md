@@ -13,7 +13,7 @@
 - `DockShelfMark.svg`：彩色独立品牌符号；
 - `DockShelfLogo.svg`：彩色中文横向 Logo；
 - `DockShelfLogoMonochrome.svg`：单色中文横向 Logo；
-- `DockShelf/Assets.xcassets/MenuBarTemplateIcon.imageset/MenuBarTemplateIcon.svg`：18 pt 菜单栏生产图标。
+- `../../DockShelf/Assets.xcassets/MenuBarTemplateIcon.imageset/MenuBarTemplateIcon.svg`：18 pt 菜单栏生产图标。
 
 App icon 的生产 PNG 从 `AppIconSource.svg` 生成。Logo 当前使用系统苹方字标，后续若定制字形，应保持符号的尺寸、倾角和基线关系不变。
 

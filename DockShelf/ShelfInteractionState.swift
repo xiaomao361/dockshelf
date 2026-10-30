@@ -7,7 +7,9 @@ final class ShelfInteractionState: ObservableObject {
         case receivingValid
         case receivingInvalid
         case returningShelfItem
+        case processing
         case success
+        case reauthorized(count: Int)
         case partial(addedCount: Int, removedCount: Int, duplicateCount: Int, failedCount: Int)
         case invalid
         case replaced(count: Int)
@@ -22,16 +24,21 @@ final class ShelfInteractionState: ObservableObject {
     @Published private(set) var lastAddedCount = 0
     @Published var isPanelVisible = false
     @Published var isShowingDetails = false
+    @Published var isShowingRecovery = false
     private var feedbackBeforeDrop: Phase?
 
     var hasPersistentFeedback: Bool { phase.isPersistentFeedback }
 
+    var folderReauthorizationRequested: (([String]) -> Void)?
+    var reauthorizationRequested: (([String]) -> Void)?
+    var helpRequested: (() -> Void)?
     var panelHoverChanged: ((Bool) -> Void)?
     var panelDropChanged: ((Bool) -> Void)?
     var dropFinished: ((ShelfStore.AddResult) -> Void)?
     var replacementUndone: (() -> Void)?
     var feedbackDismissed: (() -> Void)?
     var exportBegan: (() -> Void)?
+    var exportEnded: ((Bool) -> Void)?
 
     func showDropTarget(isValid: Bool) {
         isShowingDetails = false
@@ -57,10 +64,31 @@ final class ShelfInteractionState: ObservableObject {
         feedbackBeforeDrop = nil
     }
 
-    func finishDrop(result: ShelfStore.AddResult) {
+    func beginProcessing() {
+        isShowingDetails = false
+        feedbackBeforeDrop = nil
+        phase = .processing
+        panelDropChanged?(true)
+    }
+
+    func finishQueuedDrop(result: ShelfStore.AddResult) {
+        if phase.isDropTarget {
+            let target = phase
+            finishDrop(result: result, notify: false)
+            feedbackBeforeDrop = phase.isPersistentFeedback ? phase : nil
+            phase = target
+        } else if phase != .exporting && phase != .returningShelfItem {
+            finishDrop(result: result)
+        }
+    }
+
+    func finishDrop(result: ShelfStore.AddResult, notify: Bool = true) {
         isShowingDetails = false
         feedbackBeforeDrop = nil
         switch result {
+        case let .reauthorized(count):
+            lastAddedCount = 0
+            phase = .reauthorized(count: count)
         case let .added(count):
             lastAddedCount = count
             phase = .success
@@ -83,7 +111,7 @@ final class ShelfInteractionState: ObservableObject {
             lastAddedCount = 0
             phase = .insufficientReplaceable(required: required, available: available)
         }
-        dropFinished?(result)
+        if notify { dropFinished?(result) }
     }
 
     func showReplacementRestored() {
@@ -120,6 +148,7 @@ final class ShelfInteractionState: ObservableObject {
         feedbackBeforeDrop = nil
         lastAddedCount = 0
         isShowingDetails = false
+        isShowingRecovery = false
         phase = .idle
     }
 }
@@ -127,7 +156,7 @@ final class ShelfInteractionState: ObservableObject {
 private extension ShelfInteractionState.Phase {
     var isPersistentFeedback: Bool {
         switch self {
-        case .partial, .invalid, .replaced, .duplicate, .tooMany, .insufficientReplaceable:
+        case .processing, .reauthorized, .partial, .invalid, .replaced, .duplicate, .tooMany, .insufficientReplaceable:
             true
         case .idle, .receivingValid, .receivingInvalid, .returningShelfItem, .exporting, .success, .restored:
             false

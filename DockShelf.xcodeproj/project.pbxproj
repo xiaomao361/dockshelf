@@ -19,6 +19,10 @@
 		A10000000000000000000009 /* ShelfImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* ShelfImport.swift */; };
 		A10000000000000000000010 /* ShelfShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* ShelfShortcut.swift */; };
 		A10000000000000000000011 /* ShelfDragMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* ShelfDragMonitor.swift */; };
+		A10000000000000000000014 /* ShelfFileAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000014 /* ShelfFileAccess.swift */; };
+		A10000000000000000000015 /* ShelfPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* ShelfPersistence.swift */; };
+		A10000000000000000000016 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* PrivacyInfo.xcprivacy */; };
+		A10000000000000000000017 /* ShelfHelpWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* ShelfHelpWindow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +40,10 @@
 		B10000000000000000000011 /* ShelfImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfImport.swift; sourceTree = "<group>"; };
 		B10000000000000000000012 /* ShelfShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfShortcut.swift; sourceTree = "<group>"; };
 		B10000000000000000000013 /* ShelfDragMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfDragMonitor.swift; sourceTree = "<group>"; };
+		B10000000000000000000014 /* ShelfFileAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfFileAccess.swift; sourceTree = "<group>"; };
+		B10000000000000000000015 /* ShelfPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfPersistence.swift; sourceTree = "<group>"; };
+		B10000000000000000000016 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		B10000000000000000000017 /* ShelfHelpWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfHelpWindow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +71,7 @@
 				B10000000000000000000000 /* main.swift */,
 				B10000000000000000000001 /* AppDelegate.swift */,
 				B10000000000000000000002 /* StatusBarController.swift */,
+				B10000000000000000000017 /* ShelfHelpWindow.swift */,
 				B10000000000000000000003 /* ShelfPanelController.swift */,
 				B10000000000000000000004 /* ShelfStore.swift */,
 				B10000000000000000000005 /* ShelfView.swift */,
@@ -72,6 +81,9 @@
 				B10000000000000000000012 /* ShelfShortcut.swift */,
 				B10000000000000000000013 /* ShelfDragMonitor.swift */,
 				B10000000000000000000009 /* Assets.xcassets */,
+				B10000000000000000000014 /* ShelfFileAccess.swift */,
+				B10000000000000000000015 /* ShelfPersistence.swift */,
+				B10000000000000000000016 /* PrivacyInfo.xcprivacy */,
 				B10000000000000000000006 /* Info.plist */,
 			);
 			path = DockShelf;
@@ -144,6 +156,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000007 /* Assets.xcassets in Resources */,
+				A10000000000000000000016 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -157,8 +170,11 @@
 				A10000000000000000000000 /* main.swift in Sources */,
 				A10000000000000000000001 /* AppDelegate.swift in Sources */,
 				A10000000000000000000002 /* StatusBarController.swift in Sources */,
+				A10000000000000000000017 /* ShelfHelpWindow.swift in Sources */,
 				A10000000000000000000003 /* ShelfPanelController.swift in Sources */,
 				A10000000000000000000004 /* ShelfStore.swift in Sources */,
+				A10000000000000000000015 /* ShelfPersistence.swift in Sources */,
+				A10000000000000000000014 /* ShelfFileAccess.swift in Sources */,
 				A10000000000000000000005 /* ShelfView.swift in Sources */,
 				A10000000000000000000006 /* DockShelfTheme.swift in Sources */,
 				A10000000000000000000008 /* ShelfInteractionState.swift in Sources */,
@@ -237,6 +253,78 @@
 			};
 			name = Release;
 		};
+		G10000000000000000000003 /* AppStoreDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = AppStoreDebug;
+		};
+		G10000000000000000000004 /* AppStoreRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+			};
+			name = AppStoreRelease;
+		};
+		H10000000000000000000003 /* AppStoreDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = DockShelf/AppStore.entitlements;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 2026103001;
+				DEVELOPMENT_TEAM = A5L4GGX82X;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DockShelf/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.claracore.dockshelf;
+				PRODUCT_NAME = "搁这儿";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = AppStoreDebug;
+		};
+		H10000000000000000000004 /* AppStoreRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = DockShelf/AppStore.entitlements;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 2026103001;
+				DEVELOPMENT_TEAM = A5L4GGX82X;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DockShelf/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.claracore.dockshelf;
+				PRODUCT_NAME = "搁这儿";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = AppStoreRelease;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -244,7 +332,9 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				G10000000000000000000001 /* Debug */,
+				G10000000000000000000003 /* AppStoreDebug */,
 				G10000000000000000000002 /* Release */,
+				G10000000000000000000004 /* AppStoreRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -253,7 +343,9 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				H10000000000000000000001 /* Debug */,
+				H10000000000000000000003 /* AppStoreDebug */,
 				H10000000000000000000002 /* Release */,
+				H10000000000000000000004 /* AppStoreRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

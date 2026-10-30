@@ -31,6 +31,11 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     private var globalEventMonitor: Any?
     private var animationGeneration = 0
     private var automaticSession: UUID?
+    private var earliestAutoClose = Date.distantPast
+
+    var folderReauthorizationRequested: (([String]) -> Void)?
+    var reauthorizationRequested: (([String]) -> Void)?
+    var helpRequested: (() -> Void)?
 
     var isVisible: Bool { panel.isVisible }
 
@@ -44,6 +49,9 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         )
         super.init()
 
+        interaction.folderReauthorizationRequested = { [weak self] in self?.folderReauthorizationRequested?($0) }
+        interaction.reauthorizationRequested = { [weak self] in self?.reauthorizationRequested?($0) }
+        interaction.helpRequested = { [weak self] in self?.helpRequested?() }
         interaction.panelHoverChanged = { [weak self] isHovering in
             self?.panelHoverChanged(isHovering)
         }
@@ -65,6 +73,10 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
             self?.beginExport()
         }
 
+        interaction.exportEnded = { [weak self] accepted in
+            self?.finishExport(accepted: accepted)
+        }
+
         panel.delegate = self
         panel.cancelHandler = { [weak self] in self?.close() }
         panel.isFloatingPanel = true
@@ -72,7 +84,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.isMovable = false
         panel.contentView = ShelfHostingView(store: store, interaction: interaction)
@@ -106,7 +118,8 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     func showForAutomaticDrag(relativeTo button: NSStatusBarButton) {
-        guard !panel.isVisible else { return }
+        // A visible window may still be fading out from the previous gesture.
+        // Every fresh drag must replace that session and cancel its pending close.
         automaticSession = UUID()
         show(relativeTo: button, reason: .automatic, activate: false)
     }
@@ -115,7 +128,8 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         guard let session = automaticSession else { return }
         // Native performDragOperation may arrive after the mouse-up observation.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard let self, self.automaticSession == session else { return }
+            guard let self, self.automaticSession == session, self.store.pendingImportCount == 0,
+                  NSEvent.pressedMouseButtons & 1 == 0 else { return }
             self.close()
         }
     }
@@ -133,7 +147,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
                 guard let self, let button, self.isStatusHovered else { return }
                 self.show(relativeTo: button, reason: .hover, activate: false)
             }
-        } else if panel.isVisible && presentationReason == .hover {
+        } else if panel.isVisible && (presentationReason == .hover || presentationReason == .drop) {
             scheduleTransientClose(after: 0.28)
         }
     }
@@ -164,9 +178,12 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     @discardableResult
     func receiveStatusDrop(_ batch: ShelfImport.Batch) -> Bool {
         isStatusDragActive = false
-        let result = store.add(batch.urls, failedCount: batch.failedCount, issues: batch.issues)
-        interaction.finishDrop(result: result)
-        return result.accepted
+        interaction.beginProcessing()
+        store.enqueueImport(batch.urls, failedCount: batch.failedCount, issues: batch.issues) { [weak interaction] result in
+            interaction?.finishQueuedDrop(result: result)
+        }
+        return true
+
     }
 
     func close() {
@@ -195,6 +212,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         anchorButton = button
         presentationReason = reason
         interaction.isPanelVisible = true
+        earliestAutoClose = Date().addingTimeInterval(ShelfMotion.unfold + ShelfMotion.settle)
         animationGeneration += 1
         panel.animations.removeAll()
 
@@ -203,8 +221,12 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         if wasVisible {
-            panel.setFrameOrigin(targetOrigin)
-            panel.alphaValue = 1
+            // Supersede an in-flight animator too, not just its completion callback.
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                panel.animator().setFrameOrigin(targetOrigin)
+                panel.animator().alphaValue = 1
+            }
         } else {
             let startOrigin = NSPoint(
                 x: targetOrigin.x,
@@ -225,7 +247,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
 
         if !wasVisible {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.16
+                context.duration = 0.28
                 context.timingFunction = CAMediaTimingFunction(
                     controlPoints: 0.2,
                     0,
@@ -253,8 +275,8 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         isPanelHovered = isHovering
         if isHovering {
             cancelPendingWork()
-        } else if presentationReason == .hover && !isStatusHovered {
-            scheduleTransientClose(after: 0.28)
+        } else if (presentationReason == .hover || presentationReason == .drop) && !isStatusHovered {
+            scheduleTransientClose(after: 0.6)
         }
     }
 
@@ -284,19 +306,20 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         let closeDelay: TimeInterval?
         switch result {
         case .added:
-            closeDelay = 0.35
+            closeDelay = ShelfMotion.dropHold
         case .replaced:
             closeDelay = nil
             installOutsideClickMonitors()
-        case .partial, .duplicate, .invalid, .tooMany, .insufficientReplaceable:
+        case .reauthorized, .partial, .duplicate, .invalid, .tooMany, .insufficientReplaceable:
             closeDelay = nil
             installOutsideClickMonitors()
         }
 
-        if let closeDelay {
-            timers.scheduleCompletion(after: closeDelay) { [weak self] in
-                self?.close()
-            }
+        if store.persistenceProblem != nil || store.accessWarning != nil {
+            installOutsideClickMonitors()
+        } else if let closeDelay, store.pendingImportCount == 0 {
+            earliestAutoClose = Date().addingTimeInterval(closeDelay)
+            scheduleTransientClose(after: closeDelay)
         }
     }
 
@@ -306,7 +329,7 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         cancelPendingWork()
         presentationReason = .export
         removeEventMonitors()
-        installExportEndMonitors()
+        // Native drag completion owns the end, after any system snapback.
 
         scheduleExportFallback(after: 15)
     }
@@ -319,12 +342,17 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         installOutsideClickMonitors()
     }
 
-    private func finishExport() {
+    private func finishExport(accepted: Bool = false) {
         guard presentationReason == .export else { return }
         removeEventMonitors()
         interaction.reset()
-        timers.scheduleCompletion(after: 0.25) { [weak self] in
-            self?.close()
+        if accepted {
+            presentationReason = .drop
+            earliestAutoClose = Date().addingTimeInterval(0.65)
+            scheduleTransientClose(after: 0.65)
+        } else {
+            // Cancellation is not export success. Keep the restored reference available.
+            returnToShelf()
         }
     }
 
@@ -340,12 +368,13 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
     }
 
     private func scheduleTransientClose(after delay: TimeInterval) {
-        schedule(after: delay) { [weak self] in
+        schedule(after: max(delay, earliestAutoClose.timeIntervalSinceNow)) { [weak self] in
             guard let self,
                   !self.isStatusHovered,
                   !self.isPanelHovered,
                   !self.isStatusDragActive,
-                  !self.isPanelDragActive else { return }
+                  !self.isPanelDragActive,
+                  self.store.pendingImportCount == 0 else { return }
             self.close()
         }
     }
@@ -374,12 +403,12 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         )
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.11
+            context.duration = reduceMotion ? ShelfMotion.exit : ShelfMotion.fold + ShelfMotion.exit
             context.timingFunction = CAMediaTimingFunction(
-                controlPoints: 0.2,
+                controlPoints: 0.75,
                 0,
-                0,
-                1
+                0.95,
+                0.2
             )
             panel.animator().alphaValue = 0
             if !reduceMotion {
@@ -411,21 +440,8 @@ final class ShelfPanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func installExportEndMonitors() {
-        removeEventMonitors()
-        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) {
-            [weak self] event in
-            self?.finishExport()
-            return event
-        }
-        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) {
-            [weak self] _ in
-            Task { @MainActor in self?.finishExport() }
-        }
-    }
-
     private func closeIfPointerIsOutside() {
-        guard !interaction.isShowingDetails else { return }
+        guard !interaction.isShowingDetails && !interaction.isShowingRecovery else { return }
         let pointer = NSEvent.mouseLocation
         guard !panel.frame.contains(pointer), !anchorFrame.contains(pointer) else { return }
         close()

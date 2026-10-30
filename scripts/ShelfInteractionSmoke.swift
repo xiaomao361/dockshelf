@@ -110,6 +110,19 @@ struct ShelfInteractionSmoke {
         for (index, file) in files.enumerated() {
             check(try Data(contentsOf: file) == Data("original-\(index)".utf8), "interaction tests never alter source content")
         }
+        interaction.beginProcessing()
+        interaction.panelDropEntered(isValid: true)
+        var queuedCompletionNotifications = 0
+        interaction.dropFinished = { _ in queuedCompletionNotifications += 1 }
+        interaction.finishQueuedDrop(result: .partial(addedCount: 1, removedCount: 0, duplicateCount: 0, failedCount: 1))
+        check(interaction.phase == .receivingValid && queuedCompletionNotifications == 0, "older async result cannot finish or close a newer active drag")
+        interaction.panelDropExited()
+        check(interaction.phase == .partial(addedCount: 1, removedCount: 0, duplicateCount: 0, failedCount: 1), "cancelled newer drag restores completed async failure feedback")
+        interaction.beginExport()
+        interaction.finishQueuedDrop(result: .added(count: 1))
+        check(interaction.phase == .exporting && queuedCompletionNotifications == 0, "async completion cannot close an active export")
+        interaction.reset()
+
         print("Shelf interaction smoke passed: status/panel cancelled drops, replacement/partial undo, committed outcomes, counts, reset/details, export state, source integrity")
     }
 

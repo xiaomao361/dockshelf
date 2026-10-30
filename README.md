@@ -1,75 +1,57 @@
-# 搁这儿
+# 搁这儿 · DockShelf
 
-“搁这儿”是一款原生 macOS 菜单栏文件搁板。拖起待会儿要用的文件或文件夹，放进自动展开的搁板，需要时再从搁板拖到 Finder、浏览器、聊天或邮件应用。
+原生 macOS 菜单栏文件搁板。把待会儿要用的文件或文件夹放在手边，需要时再拖到 Finder、浏览器上传区或其他应用。
 
-它只保存原位置的引用，不复制、移动、上传或修改文件内容。
+搁板只保存引用，不复制、移动、删除或上传原文件。
 
-当前正式版本：[**0.1.5（2026101901）**](https://github.com/xiaomao361/dockshelf/releases/tag/v0.1.5)。交互与界面改进见 [版本说明](docs/RELEASE_NOTES_v0.1.5.md) 和 [实施计划](docs/OPTIMIZATION_2026-10-19.md)。App/DMG 已完成 Developer ID 签名、Apple 公证及公开下载复验，凭据见 [发布回执](docs/RELEASE_v0.1.5.md)。
+[Mac App Store](https://apps.apple.com/cn/app/id6825144885) · [产品介绍](https://xiaomao361.github.io/dockshelf/) · [使用帮助](https://xiaomao361.github.io/dockshelf/support/) · [版本记录](CHANGELOG.md)
+
+## 功能
+
+- 拖起文件时自动展开，也可通过菜单栏图标或全局快捷键打开。
+- 临时引用退出即清空；固定引用通过只读安全作用域书签恢复访问。
+- 最多容纳 20 项。容量不足时替换最早加入的临时项，并提供撤销；固定项不会自动替换。
+- 文件类型图标、照片与 PDF 内容预览、悬停文件名、横向滚动和翻页。
+- 固定记录备份、导入和按所在文件夹批量恢复访问。
+- 本地存储，无账号、遥测、广告跟踪或云同步。
+
+源码版本为 **1.1（2026103001）**，商店构建已上传，尚未确认公开发布；商店可下载版本以商店页面为准。1.1 包含软触质感的翻折搁板、分类文件图标和拖拽交互改进。历史独立安装包位于 [GitHub Releases](https://github.com/xiaomao361/dockshelf/releases)。
 
 ## 系统要求
 
 - Apple Silicon Mac（arm64）
-- macOS 14 Sonoma 或更高版本
-
-当前版本不支持 Intel Mac、Windows 或 Mac App Store 安装。
-
-## 安装
-
-1. 从 [Releases](https://github.com/xiaomao361/dockshelf/releases) 下载最新 DMG。
-2. 打开 DMG，把“搁这儿”拖入“应用程序”。
-3. 从“应用程序”启动“搁这儿”；启动后它只显示在菜单栏，不显示 Dock 图标。
-
-发布版使用 Developer ID 签名并经过 Apple 公证。更新版本时重新下载 DMG，并用新版应用替换旧版即可。
+- macOS 14 或更高版本
 
 ## 使用
 
-- 默认开启自动展开：拖起文件后，搁板固定在菜单栏图标下方出现，移进去松手即可；成功放入约 0.35 秒后收起，鼠标停留不会取消收起。菜单栏右键可关闭“拖动文件时自动展开”；Control–Option–空格保留为备用入口。
+1. 启动后在屏幕顶部菜单栏找到搁这儿；应用没有普通主窗口或 Dock 图标。
+2. 从 Finder 拖入文件或文件夹，放到菜单栏图标或展开的搁板区域。
+3. 从搁板上的文件图像拖到目标应用继续使用。
+4. 在 1.1 中，悬停文件可查看名称并显示固定、移除按钮；超过五项时可滚动或使用底部两侧箭头。
 
-- 将文件或文件夹拖到菜单栏图标，搁板会自动展开并接收引用。
-- 点击菜单栏图标可以显示或收起搁板；有内容时悬停 300 ms 也会展开。
-- 从搁板把项目拖到需要的位置；原文件仍留在原处。
-- 搁板最多保存 20 项。固定项会在应用重启后恢复，普通项退出应用后清空。
-- 容量不足时会替换最早加入的未固定项，并提供一次撤销机会。
-- 原文件被移动或删除后，引用会显示为失效；应用不会自动寻找新位置。
+默认快捷键为 **Control–Option–空格**。右键菜单栏图标，进入“帮助与关于…”可修改快捷键。关闭“拖动文件时自动展开”后，仍可用菜单栏与快捷键打开。
 
-0.1.5 增加以下操作反馈：
+移除引用不会删除原文件。文件移动后需移除旧引用并从新位置重新拖入；外置卷未连接或授权失效时，可使用恢复入口。备份包含私人路径和访问书签，请勿公开分享。详情见 [隐私政策](PRIVACY.md)。
 
-- 悬停或键盘聚焦卡片时，底部显示文件名称及所在目录；反馈占用底栏时，顶部继续显示文件名称。完整路径仍可通过悬停提示查看。固定与移除按钮位于卡片下方，图标区域用于拖动。
-- 超过五项时可用底部左右按钮翻动，触控板横向滚动与鼠标滚轮继续可用。
-- 拖入时保留容量，已满时说明可能替换临时引用或需要腾出固定位置；准确结果在放入后显示。
-- 未能读取的项目可从反馈右侧的信息按钮查看原因。已知失效路径显示名称和路径；原生拖拽未提供可靠身份时明确显示“无法识别的项目”。详情只保留在本机内存，不写入日志或偏好设置。
-- 取消另一次拖入会恢复之前的可操作反馈与撤销入口；成功显示加入数量，并发出辅助播报请求。
+## 开发
 
-## 隐私
-
-“搁这儿”没有网络请求、账号、云同步、遥测或崩溃上报。固定项的本地绝对路径保存在当前 Mac 的应用偏好设置中。详情见 [PRIVACY.md](PRIVACY.md)。
-
-## 问题反馈
-
-请通过 [GitHub Issues](https://github.com/xiaomao361/dockshelf/issues) 反馈问题，并附上 macOS 版本、Mac 芯片型号和复现步骤。不要提交包含私人文件路径、文件名或文件内容的截图和日志。
-
-## 本地构建
+应用使用 Swift、SwiftUI 与 AppKit，无第三方运行时依赖。
 
 ```bash
-xcodebuild \
-  -project DockShelf.xcodeproj \
-  -scheme DockShelf \
-  -configuration Debug \
-  -derivedDataPath .build/DerivedData \
-  CODE_SIGNING_ALLOWED=NO \
-  build
+xcodebuild -project DockShelf.xcodeproj \
+  -scheme DockShelf-AppStore -configuration AppStoreDebug \
+  -derivedDataPath .build/DerivedData build
+bash scripts/validate.sh
 ```
 
-技术实现与历史记录见：
+- [架构与数据模型](docs/ARCHITECTURE.md)
+- [构建与分发](docs/DEVELOPMENT.md)
+- [测试与交互验证](docs/TESTING.md)
+- [GitHub Pages](docs/GITHUB_PAGES.md)
+- [品牌资源](docs/brand/README.md)
 
-- [原生实现与验收边界](docs/NATIVE_M0.md)
-- [视觉决策](docs/DESIGN_DIRECTION.md)
-- [v0.1.5 优化计划与验证](docs/OPTIMIZATION_2026-10-19.md)
-- [v0.1.5 版本说明](docs/RELEASE_NOTES_v0.1.5.md)
-- [v0.1.5 签名、公证与发布回执](docs/RELEASE_v0.1.5.md)
-- [品牌资产](docs/brand/README.md)
-- [v0.1.4 发布说明](docs/RELEASE_NOTES_v0.1.4.md)
+## 反馈与许可
 
-## 授权
+通过 [GitHub Issues](https://github.com/xiaomao361/dockshelf/issues) 提交问题，附上应用版本、macOS 版本和复现步骤。截图及日志请先移除私人文件名、路径和访问书签。
 
-Copyright © 2026 Zhou Wei. All rights reserved. 当前仓库公开仅用于查看和问题反馈，未授予复制、修改或再分发源码与品牌资产的许可。详见 [LICENSE](LICENSE)。
+源码、二进制及品牌资源的使用条件见 [LICENSE](LICENSE)。Copyright © 2026 Zhou Wei.
